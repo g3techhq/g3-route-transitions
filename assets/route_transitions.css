@@ -1,0 +1,160 @@
+:root {
+    --route-transition-cover-duration: 0.6s;
+    --route-transition-push-duration: 260ms;
+}
+
+html,
+body {
+    min-height: 100%;
+    background: var(--route-transition-bg, var(--color-bg, #f8f8f8));
+}
+
+.route-transition-base {
+    view-transition-name: base;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    background: var(--route-transition-bg, var(--color-bg, #f8f8f8));
+    isolation: isolate;
+}
+.route-transition-cover {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    background: var(--route-transition-bg, var(--color-bg, #f8f8f8));
+    isolation: isolate;
+}
+
+html[data-route-transition="cover-up"] .route-transition-cover,
+html[data-route-transition="uncover-down"] .route-transition-cover {
+    view-transition-name: cover;
+    contain: layout paint;
+}
+
+html[data-route-transition="push-left"] .route-transition-segment,
+html[data-route-transition="push-right"] .route-transition-segment {
+    view-transition-name: segment;
+    contain: layout paint;
+}
+
+html[data-route-transition="cover-up"]::view-transition-group(cover),
+html[data-route-transition="uncover-down"]::view-transition-group(cover) {
+    z-index: 9999;
+}
+
+html[data-route-transition="cover-up"]::view-transition-group(base),
+html[data-route-transition="uncover-down"]::view-transition-group(base) {
+    z-index: 1;
+}
+
+html[data-route-transition="cover-up"]::view-transition-image-pair(cover),
+html[data-route-transition="cover-up"]::view-transition-image-pair(base),
+html[data-route-transition="uncover-down"]::view-transition-image-pair(cover),
+html[data-route-transition="uncover-down"]::view-transition-image-pair(base) {
+    image-rendering: crisp-edges;
+    isolation: isolate;
+    mix-blend-mode: normal;
+}
+
+html[data-route-transition="cover-up"]::view-transition-old(root),
+html[data-route-transition="cover-up"]::view-transition-new(root),
+html[data-route-transition="uncover-down"]::view-transition-old(root),
+html[data-route-transition="uncover-down"]::view-transition-new(root),
+html[data-route-transition="cover-up"]::view-transition-old(cover),
+html[data-route-transition="cover-up"]::view-transition-new(base),
+html[data-route-transition="uncover-down"]::view-transition-new(cover),
+html[data-route-transition="uncover-down"]::view-transition-old(base) {
+    animation: none;
+    opacity: 0;
+}
+
+html[data-route-transition="cover-up"]::view-transition-old(base),
+html[data-route-transition="uncover-down"]::view-transition-new(base) {
+    mix-blend-mode: normal;
+    opacity: 1;
+    z-index: 1;
+}
+
+html[data-route-transition="cover-up"]::view-transition-old(base) {
+    animation: route-transition-dim-base var(--route-transition-cover-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+html[data-route-transition="uncover-down"]::view-transition-new(base) {
+    animation: route-transition-undim-base var(--route-transition-cover-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+html[data-route-transition="cover-up"]::view-transition-new(cover),
+html[data-route-transition="uncover-down"]::view-transition-old(cover) {
+    mix-blend-mode: normal;
+    opacity: 1;
+    z-index: 2;
+}
+
+html[data-route-transition="cover-up"]::view-transition-new(cover) {
+    animation: route-transition-slide-up-cover var(--route-transition-cover-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
+html[data-route-transition="uncover-down"]::view-transition-old(cover) {
+    animation: route-transition-slide-down-cover var(--route-transition-cover-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
+@keyframes route-transition-slide-up-cover {
+    from { transform: translateY(100vh); }
+    to { transform: translateY(0vh); }
+}
+
+@keyframes route-transition-slide-down-cover {
+    from { transform: translateY(0vh); }
+    to { transform: translateY(100vh); }
+}
+
+@keyframes route-transition-dim-base {
+    from { filter: brightness(1); }
+    to { filter: brightness(0.72); }
+}
+
+@keyframes route-transition-undim-base {
+    from { filter: brightness(0.72); }
+    to { filter: brightness(1); }
+}
+
+
+html[data-route-transition="push-left"]::view-transition-old(root),
+html[data-route-transition="push-left"]::view-transition-new(root),
+html[data-route-transition="push-left"]::view-transition-old(base),
+html[data-route-transition="push-left"]::view-transition-new(base),
+html[data-route-transition="push-right"]::view-transition-old(root),
+html[data-route-transition="push-right"]::view-transition-new(root),
+html[data-route-transition="push-right"]::view-transition-old(base),
+html[data-route-transition="push-right"]::view-transition-new(base) {
+    animation: none;
+}
+
+html[data-route-transition="push-left"]::view-transition-old(segment),
+html[data-route-transition="push-left"]::view-transition-new(segment),
+html[data-route-transition="push-right"]::view-transition-old(segment),
+html[data-route-transition="push-right"]::view-transition-new(segment),
+html[data-route-transition="fade"]::view-transition-old(root),
+html[data-route-transition="fade"]::view-transition-new(root) {
+    animation-duration: var(--route-transition-push-duration);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    animation-fill-mode: both;
+}
+
+html[data-route-transition="push-left"]::view-transition-old(segment) { animation-name: route-transition-push-out-left; }
+html[data-route-transition="push-left"]::view-transition-new(segment) { animation-name: route-transition-push-in-left; }
+html[data-route-transition="push-right"]::view-transition-old(segment) { animation-name: route-transition-push-out-right; }
+html[data-route-transition="push-right"]::view-transition-new(segment) { animation-name: route-transition-push-in-right; }
+html[data-route-transition="fade"]::view-transition-old(root) { animation-name: route-transition-fade-out; }
+html[data-route-transition="fade"]::view-transition-new(root) { animation-name: route-transition-fade-in; }
+
+@keyframes route-transition-push-out-left { to { transform: translateX(-100%); } }
+@keyframes route-transition-push-in-left { from { transform: translateX(100%); } }
+@keyframes route-transition-push-out-right { to { transform: translateX(100%); } }
+@keyframes route-transition-push-in-right { from { transform: translateX(-100%); } }
+@keyframes route-transition-fade-out { to { opacity: 0.001; } }
+@keyframes route-transition-fade-in { from { opacity: 0.001; } }
