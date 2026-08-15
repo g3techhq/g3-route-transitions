@@ -9,6 +9,20 @@ This crate keeps route animation rules next to your `Routable` enum, then expose
 - `RouteTransitionProvider` imports the default View Transition stylesheet.
 - `RouteTransitionRoot` wraps the app shell with the provider and cover marker.
 - `RouteTransitionBase`, `RouteTransitionCover`, and `RouteTransitionSegment` mark named snapshot regions explicitly.
+- `Platform` (`Ios` / `Md`) plus `set_platform`/`get_platform`/`init_auto_platform` pick which native motion language a transition renders with.
+
+## iOS vs Material motion
+
+Every `NavigationAnimation` is a semantic event, not a specific animation - the stylesheet gives each one a different look depending on the current [`Platform`]:
+
+| Animation | iOS (UIKit) | Material (M3) |
+|---|---|---|
+| `PushLeft` / `PushRight` | Navigation-controller push/pop: the outgoing page never fully leaves - it parallax-shifts ~30% off and dims, as if sliding back in the z-axis under the incoming page. | Shared axis (X): both pages slide the same distance and cross-fade symmetrically, no dimming. |
+| `CoverUp` / `UncoverDown` | Page-sheet modal: the base page scales down slightly and gains rounded corners while it dims. | Modal bottom sheet: the base page dims under a scrim; no scale/corner-round. |
+| `Fade` | Quick plain cross-dissolve, used for unrelated peer routes. | Fade through: the outgoing page fades/shrinks out, then the incoming page fades/grows in - a sequential, not simultaneous, hand-off. |
+| `MorphIn` / `MorphOut` | Generic scale+fade approximation of a card growing into its own route (no true shared-element geometry - this is a route-level helper, not a per-element one). | Same shape as iOS, with Material's emphasized easing/duration - an approximation of "container transform". |
+
+Call `set_platform(Platform::Ios)` / `set_platform(Platform::Md)` once at startup, and again whenever your app's platform mode changes (e.g. a settings toggle), so `animated_navigate` renders the transition that matches. Without an explicit call, `get_platform()` falls back to `detect_platform()` (`cfg(target_os)` on native builds, user-agent sniffing on wasm).
 
 ## Install
 
@@ -53,6 +67,7 @@ Transition rules:
 
 - `base` marks a normal page. It is the default.
 - `cover` marks a sheet or modal route. Base-to-cover uses `CoverUp`; cover-to-base uses `UncoverDown`.
+- `morph` marks a route that grows out of a card on a `base` route. Base-to-morph uses `MorphIn`; morph-to-base uses `MorphOut`.
 - `push(group = name, order = field)` marks ordered peer routes.
 - `key = field` or `key = (field_a, field_b)` scopes a push group to one logical entity.
 - Routes with no more specific match fall back to `Fade`.

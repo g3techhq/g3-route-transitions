@@ -45,6 +45,9 @@
 //! - `cover` marks a sheet/modal-like route. Navigating `base -> cover` returns
 //!   [`NavigationAnimation::CoverUp`]; `cover -> base` returns
 //!   [`NavigationAnimation::UncoverDown`].
+//! - `morph` marks a route that grows out of a card on a `base` route. Navigating
+//!   `base -> morph` returns [`NavigationAnimation::MorphIn`]; `morph -> base` returns
+//!   [`NavigationAnimation::MorphOut`].
 //! - `push(group = name, order = field)` marks ordered peers inside a static group. The `order`
 //!   field must implement [`Ord`]. Moving to a greater order returns `PushLeft`; moving lower
 //!   returns `PushRight`.
@@ -110,6 +113,12 @@ pub fn RouteTransitionSegment(children: Element, class: Option<String>) -> Eleme
     }
 }
 
+/// The animation vocabulary shared by the generated route method and the JS
+/// bridge. Each variant is a *semantic* navigation event (push into a
+/// hierarchy, present a modal, morph a card into its detail view, ...); the
+/// stylesheet gives each one a platform-specific look via
+/// [`Platform::data_value`], so the same variant renders as an iOS parallax
+/// push on `ios` and a Material shared-axis slide on `md`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NavigationAnimation {
     None,
@@ -119,6 +128,13 @@ pub enum NavigationAnimation {
     PushRight,
     CoverUp,
     UncoverDown,
+    /// A card-like element growing into its own full-screen detail route
+    /// (Material "container transform"; approximated on iOS as a soft
+    /// scale/fade since iOS has no native equivalent).
+    MorphIn,
+    /// The reverse of [`NavigationAnimation::MorphIn`]: a detail route
+    /// shrinking back down into the card that opened it.
+    MorphOut,
 }
 
 impl NavigationAnimation {
@@ -130,8 +146,107 @@ impl NavigationAnimation {
             NavigationAnimation::PushRight => "push-right",
             NavigationAnimation::CoverUp => "cover-up",
             NavigationAnimation::UncoverDown => "uncover-down",
+            NavigationAnimation::MorphIn => "morph-in",
+            NavigationAnimation::MorphOut => "morph-out",
         }
     }
+}
+
+/// Platform styling mode for the transition stylesheet - mirrors the
+/// iOS-vs-Material split app component libraries (e.g. Ionic, g3_ui) already
+/// use for widget styling, so the same signal can drive both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Platform {
+    /// UINavigationController/UIKit-flavored motion: parallax push where the
+    /// outgoing page slides back and dims rather than leaving the screen,
+    /// page-sheet modals, quick cross-dissolves.
+    Ios,
+    /// Material Design 3 motion: shared-axis slides, fade-through, modal
+    /// bottom sheets with a scrim.
+    Md,
+}
+
+impl Platform {
+    pub fn data_value(self) -> &'static str {
+        match self {
+            Platform::Ios => "ios",
+            Platform::Md => "md",
+        }
+    }
+}
+
+thread_local! {
+    static GLOBAL_PLATFORM: std::cell::Cell<Option<Platform>> = const { std::cell::Cell::new(None) };
+}
+
+/// Explicitly set the platform used to pick a transition's visual style.
+/// Call this once at startup and again whenever the app's platform mode
+/// changes (e.g. a user-facing iOS/Material style toggle).
+pub fn set_platform(platform: Platform) {
+    GLOBAL_PLATFORM.with(|p| p.set(Some(platform)));
+}
+
+/// The platform currently used to style transitions. Falls back to
+/// compile-time/runtime auto-detection if [`set_platform`] was never called.
+pub fn get_platform() -> Platform {
+    GLOBAL_PLATFORM.with(|p| p.get()).unwrap_or_else(detect_platform)
+}
+
+/// Detect a reasonable default platform from `cfg(target_os)` (native
+/// mobile builds) or, on wasm, from the user agent.
+pub fn detect_platform() -> Platform {
+    #[cfg(target_os = "ios")]
+    {
+        Platform::Ios
+    }
+    #[cfg(target_os = "android")]
+    {
+        Platform::Md
+    }
+    #[cfg(all(
+        target_arch = "wasm32",
+        not(target_os = "ios"),
+        not(target_os = "android")
+    ))]
+    {
+        detect_platform_web()
+    }
+    #[cfg(not(any(
+        target_os = "ios",
+        target_os = "android",
+        target_arch = "wasm32"
+    )))]
+    {
+        Platform::Md
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn detect_platform_web() -> Platform {
+    let Some(window) = web_sys::window() else {
+        return Platform::Md;
+    };
+    let navigator = window.navigator();
+    let user_agent = navigator.user_agent().unwrap_or_default().to_lowercase();
+    let platform = navigator.platform().unwrap_or_default().to_lowercase();
+    let max_touch_points = navigator.max_touch_points();
+
+    let is_iphone_or_ipod = user_agent.contains("iphone") || user_agent.contains("ipod");
+    let is_ipad = user_agent.contains("ipad")
+        || (platform.contains("mac") && max_touch_points > 1 && user_agent.contains("safari"));
+
+    if is_iphone_or_ipod || is_ipad {
+        Platform::Ios
+    } else {
+        Platform::Md
+    }
+}
+
+/// Initialize the global platform from compile-time/runtime auto-detection.
+/// Prefer calling [`set_platform`] directly when the host app already tracks
+/// an explicit iOS/Material mode.
+pub fn init_auto_platform() {
+    set_platform(detect_platform());
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -139,6 +254,9 @@ pub enum RouteTransitionLayer {
     #[default]
     Base,
     Cover,
+    /// A card-like element that morphs into (and back out of) its own
+    /// full-screen route, distinct from a modal `Cover` layer.
+    Morph,
 }
 
 pub trait RouteTransitions: PartialEq {
@@ -166,6 +284,7 @@ pub fn RouteTransitionRoot(children: Element, class: Option<String>) -> Element 
 
 const VIEW_TRANSITION_NAVIGATE: &str = r#"
 const animation = await dioxus.recv();
+const platform = await dioxus.recv();
 const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
 const dxRouteTransitionNextFrame = () => new Promise((resolve) => {
     const raf = window.requestAnimationFrame ?? ((callback) => window.setTimeout(callback, 16));
@@ -194,12 +313,20 @@ try {
         dioxus.send("navigate");
         dioxus.send("done");
     } else {
-        const ua = navigator.userAgent?.toLowerCase?.() ?? "";
-        const coarsePointer = window.matchMedia?.("(hover: none), (pointer: coarse), (any-pointer: coarse)")?.matches ?? false;
-        const nativeMobile = /android|iphone|ipad|ipod/.test(ua);
-
         document.documentElement.dataset.routeTransition = animation;
-        document.documentElement.dataset.routeTransitionPlatform = nativeMobile || coarsePointer ? "mobile" : "web";
+        document.documentElement.dataset.routeTransitionPlatform = platform;
+
+        // The outgoing snapshot is taken synchronously inside
+        // startViewTransition, so the attributes set above have to reach
+        // computed style before that call. Without this flush an element whose
+        // `view-transition-name` is granted by those attributes is still
+        // unnamed when it is captured, and so gets no group at all.
+        //
+        // The failure is asymmetric and easy to miss: a cover entering needs
+        // its name only in the *new* state, which is styled later anyway and
+        // works, while the same cover leaving needs it in the old state and
+        // silently drops out of the transition.
+        void document.documentElement.offsetHeight;
 
         const transition = document.startViewTransition(async () => {
             dioxus.send("navigate");
@@ -248,6 +375,7 @@ where
 
     let mut transition = eval(VIEW_TRANSITION_NAVIGATE);
     _ = transition.send(animation.data_value());
+    _ = transition.send(get_platform().data_value());
 
     loop {
         match transition.recv::<String>().await.as_deref() {
@@ -270,14 +398,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cover_transitions_dim_the_full_base_snapshot() {
+    fn cover_transitions_dim_the_full_base_snapshot_per_platform() {
         let stylesheet = include_str!("../assets/route_transitions.css");
 
-        assert!(stylesheet.contains("::view-transition-old(base)"));
         assert!(stylesheet.contains("cover-up\"]::view-transition-new(cover)"));
         assert!(stylesheet.contains("uncover-down\"]::view-transition-old(cover)"));
         assert!(!stylesheet.contains("[data-route-transition-layer=\"sheet\"]"));
-        assert!(stylesheet.contains("route-transition-dim-base"));
+        assert!(stylesheet.contains("route-transition-ios-dim-base"));
+        assert!(stylesheet.contains("route-transition-md-dim-base"));
         assert!(stylesheet.contains("filter: brightness"));
         assert!(stylesheet.contains("cover-up\"]::view-transition-old(cover)"));
         assert!(stylesheet.contains("uncover-down\"]::view-transition-new(cover)"));
@@ -285,17 +413,19 @@ mod tests {
     }
 
     #[test]
-    fn mobile_cover_transitions_use_shared_cover_contract_without_platform_css_override() {
+    fn cover_transitions_are_scoped_by_platform_attribute() {
         let stylesheet = include_str!("../assets/route_transitions.css");
 
-        assert!(stylesheet.contains("cover-up\"]::view-transition-old(base)"));
-        assert!(stylesheet.contains("uncover-down\"]::view-transition-new(base)"));
-        assert!(
-            !stylesheet
-                .contains("data-route-transition-platform=\"mobile\"]::view-transition-old(base)")
-        );
+        assert!(stylesheet.contains(
+            "html[data-route-transition-platform=\"ios\"][data-route-transition=\"cover-up\"]::view-transition-old(base)"
+        ));
+        assert!(stylesheet.contains(
+            "html[data-route-transition-platform=\"md\"][data-route-transition=\"cover-up\"]::view-transition-old(base)"
+        ));
         assert!(!stylesheet.contains("route-transition-mobile-dim-base"));
         assert!(!stylesheet.contains("route-transition-mobile-undim-base"));
+        // iOS gets the page-sheet scale/round treatment; Material does not.
+        assert!(stylesheet.contains("border-radius: 12px"));
     }
 
     #[test]
@@ -350,6 +480,26 @@ mod tests {
         assert!(source.contains("div { class, {children} }"));
     }
     #[test]
+    fn style_is_flushed_before_the_outgoing_snapshot_is_taken() {
+        // The attributes granting view-transition-name have to reach computed
+        // style before startViewTransition captures the old state, or a region
+        // leaving the page is captured unnamed and gets no group. Order
+        // matters, so this asserts the flush sits between the two.
+        let script = VIEW_TRANSITION_NAVIGATE;
+        let attributes = script
+            .find("dataset.routeTransitionPlatform = platform")
+            .expect("platform attribute is set");
+        let flush = script
+            .find("void document.documentElement.offsetHeight")
+            .expect("style is flushed");
+        let capture = script
+            .find("document.startViewTransition(async () =>")
+            .expect("transition is started");
+        assert!(attributes < flush, "the flush must come after the attributes");
+        assert!(flush < capture, "the flush must come before the snapshot");
+    }
+
+    #[test]
     fn view_transition_update_waits_for_native_route_commit_without_blocking_on_raf() {
         assert!(VIEW_TRANSITION_NAVIGATE.contains("document.startViewTransition(async () =>"));
         assert!(VIEW_TRANSITION_NAVIGATE.contains("dioxus.send(\"navigate\")"));
@@ -381,10 +531,47 @@ mod tests {
 
         assert!(stylesheet.contains("--route-transition-cover-duration: 0.6s"));
         assert!(stylesheet.contains("--route-transition-push-duration: 260ms"));
+        assert!(stylesheet.contains("--route-transition-fade-duration: 200ms"));
+        assert!(stylesheet.contains("--route-transition-morph-duration: 350ms"));
         assert!(!stylesheet.contains("route-transition-duration-debug"));
         assert!(!stylesheet.contains("route-transition-mobile-dim-base"));
         assert!(!stylesheet.contains("route-transition-mobile-undim-base"));
     }
+
+    #[test]
+    fn push_transitions_diverge_between_ios_parallax_and_md_shared_axis() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+
+        // iOS: outgoing page parallax-shifts and dims rather than leaving.
+        assert!(stylesheet.contains("route-transition-ios-push-out-left"));
+        assert!(stylesheet.contains("translateX(-30%); filter: brightness(0.85)"));
+        // Material: symmetric shared-axis slide+fade, no dimming.
+        assert!(stylesheet.contains("route-transition-md-axis-out-left"));
+        assert!(stylesheet.contains("route-transition-md-axis-in-left"));
+    }
+
+    #[test]
+    fn fade_transitions_diverge_between_ios_cross_dissolve_and_md_fade_through() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+
+        assert!(stylesheet.contains(
+            "html[data-route-transition-platform=\"ios\"][data-route-transition=\"fade\"]"
+        ));
+        assert!(stylesheet.contains("route-transition-md-fade-through-out"));
+        assert!(stylesheet.contains("route-transition-md-fade-through-in"));
+        assert!(stylesheet.contains("animation-delay"));
+    }
+
+    #[test]
+    fn morph_transitions_exist_for_both_platforms() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+
+        assert!(stylesheet.contains("data-route-transition=\"morph-in\""));
+        assert!(stylesheet.contains("data-route-transition=\"morph-out\""));
+        assert!(stylesheet.contains("route-transition-morph-grow-in"));
+        assert!(stylesheet.contains("route-transition-morph-shrink-out"));
+    }
+
     #[test]
     fn animation_data_values_match_css_contract() {
         assert_eq!(NavigationAnimation::None.data_value(), "none");
@@ -396,5 +583,31 @@ mod tests {
             NavigationAnimation::UncoverDown.data_value(),
             "uncover-down"
         );
+        assert_eq!(NavigationAnimation::MorphIn.data_value(), "morph-in");
+        assert_eq!(NavigationAnimation::MorphOut.data_value(), "morph-out");
+    }
+
+    #[test]
+    fn platform_data_values_match_css_contract() {
+        assert_eq!(Platform::Ios.data_value(), "ios");
+        assert_eq!(Platform::Md.data_value(), "md");
+    }
+
+    #[test]
+    fn set_platform_overrides_auto_detection() {
+        set_platform(Platform::Ios);
+        assert_eq!(get_platform(), Platform::Ios);
+        set_platform(Platform::Md);
+        assert_eq!(get_platform(), Platform::Md);
+    }
+
+    #[test]
+    fn view_transition_navigate_forwards_both_animation_and_platform() {
+        assert!(VIEW_TRANSITION_NAVIGATE.contains("const animation = await dioxus.recv();"));
+        assert!(VIEW_TRANSITION_NAVIGATE.contains("const platform = await dioxus.recv();"));
+        assert!(
+            VIEW_TRANSITION_NAVIGATE.contains("document.documentElement.dataset.routeTransitionPlatform = platform;")
+        );
+        assert!(!VIEW_TRANSITION_NAVIGATE.contains("navigator.userAgent"));
     }
 }

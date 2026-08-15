@@ -17,6 +17,9 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 /// - `#[transition(cover)]` marks a sheet/modal route. Navigating from a base
 ///   route to a cover route returns `NavigationAnimation::CoverUp`; navigating
 ///   back from cover to base returns `NavigationAnimation::UncoverDown`.
+/// - `#[transition(morph)]` marks a route that grows out of a card on a base
+///   route. Base-to-morph returns `NavigationAnimation::MorphIn`;
+///   morph-to-base returns `NavigationAnimation::MorphOut`.
 /// - `push(group = name, order = field)` groups ordered peer routes. The order
 ///   field must implement `Ord`. Moving to a greater value pushes left; moving
 ///   to a smaller value pushes right.
@@ -109,6 +112,14 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         ::dx_route_transitions::RouteTransitionLayer::Cover,
                         ::dx_route_transitions::RouteTransitionLayer::Base,
                     ) => return ::dx_route_transitions::NavigationAnimation::UncoverDown,
+                    (
+                        ::dx_route_transitions::RouteTransitionLayer::Base,
+                        ::dx_route_transitions::RouteTransitionLayer::Morph,
+                    ) => return ::dx_route_transitions::NavigationAnimation::MorphIn,
+                    (
+                        ::dx_route_transitions::RouteTransitionLayer::Morph,
+                        ::dx_route_transitions::RouteTransitionLayer::Base,
+                    ) => return ::dx_route_transitions::NavigationAnimation::MorphOut,
                     _ => {}
                 }
 
@@ -166,6 +177,9 @@ fn build_layer_arms(
                 }
                 RouteLayer::Cover => {
                     quote! { ::dx_route_transitions::RouteTransitionLayer::Cover }
+                }
+                RouteLayer::Morph => {
+                    quote! { ::dx_route_transitions::RouteTransitionLayer::Morph }
                 }
             };
             Ok(quote! { #pattern => #layer })
@@ -323,6 +337,7 @@ impl Parse for TransitionArgs {
             match ident.to_string().as_str() {
                 "base" => args.layer = RouteLayer::Base,
                 "cover" => args.layer = RouteLayer::Cover,
+                "morph" => args.layer = RouteLayer::Morph,
                 "push" => {
                     let content;
                     parenthesized!(content in input);
@@ -344,6 +359,7 @@ impl Parse for TransitionArgs {
 enum RouteLayer {
     Base,
     Cover,
+    Morph,
 }
 
 #[derive(Clone)]
