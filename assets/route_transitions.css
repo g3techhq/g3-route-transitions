@@ -246,8 +246,22 @@ html[data-route-transition-platform="ios"][data-route-transition="fade"]::view-t
     animation-timing-function: var(--route-transition-ios-ease);
     animation-fill-mode: both;
 }
-html[data-route-transition-platform="ios"][data-route-transition="fade"]::view-transition-old(root) { animation-name: route-transition-fade-out; }
-html[data-route-transition-platform="ios"][data-route-transition="fade"]::view-transition-new(root) { animation-name: route-transition-fade-in; }
+/* Only the outgoing page animates, and it sits above the incoming one.
+   Fading both at once leans on plus-lighter compositing to stay opaque through
+   the middle of the dissolve. Where that is not honoured - Android's WebView
+   among them - coverage dips to roughly three quarters halfway through and
+   whatever is behind the page shows through as a flash. Holding the incoming
+   page opaque underneath keeps coverage complete on any engine. */
+html[data-route-transition-platform="ios"][data-route-transition="fade"]::view-transition-old(root) {
+    animation-name: route-transition-fade-out;
+    mix-blend-mode: normal;
+    z-index: 1;
+}
+html[data-route-transition-platform="ios"][data-route-transition="fade"]::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+    opacity: 1;
+}
 
 /* Material: fade through. The outgoing page fades and shrinks slightly,
    fully finishing before the incoming page fades and grows back to size -
@@ -261,7 +275,6 @@ html[data-route-transition-platform="md"][data-route-transition="fade"]::view-tr
 }
 
 @keyframes route-transition-fade-out { to { opacity: 0.001; } }
-@keyframes route-transition-fade-in { from { opacity: 0.001; } }
 @keyframes route-transition-md-fade-through-out { to { opacity: 0; transform: scale(0.92); } }
 @keyframes route-transition-md-fade-through-in { from { opacity: 0; transform: scale(0.92); } }
 

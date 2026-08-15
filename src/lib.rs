@@ -569,6 +569,23 @@ mod tests {
     }
 
     #[test]
+    fn a_cross_dissolve_never_uncovers_what_is_behind_the_page() {
+        // Only the outgoing page may animate. Fading both at once depends on
+        // plus-lighter compositing to hold full coverage through the middle of
+        // the dissolve, and engines that ignore it show the backdrop as a
+        // flash.
+        let stylesheet = include_str!("../assets/route_transitions.css");
+        assert!(
+            !stylesheet.contains("route-transition-fade-in"),
+            "nothing may fade in during a cross-dissolve"
+        );
+        assert!(
+            stylesheet.contains("route-transition-fade-out"),
+            "the outgoing page still fades out"
+        );
+    }
+
+    #[test]
     fn route_transition_css_uses_production_durations() {
         let stylesheet = include_str!("../assets/route_transitions.css");
 
