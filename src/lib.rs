@@ -282,30 +282,50 @@ pub fn RouteTransitionRoot(children: Element, class: Option<String>) -> Element 
     }
 }
 
+/// Placeholders substituted before the script is evaluated.
+///
+/// These used to arrive over the eval channel, which cost two round trips
+/// between wasm and JS before the transition could start — dead time between
+/// the tap and the first frame of the animation. Both values are known on the
+/// Rust side already, so they are written into the script instead. They come
+/// from fixed enums, so there is nothing to escape.
+const ANIMATION_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_ANIMATION__";
+const PLATFORM_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_PLATFORM__";
+
 const VIEW_TRANSITION_NAVIGATE: &str = r#"
-const animation = await dioxus.recv();
-const platform = await dioxus.recv();
+const animation = "__DX_ROUTE_TRANSITION_ANIMATION__";
+const platform = "__DX_ROUTE_TRANSITION_PLATFORM__";
 const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
-const dxRouteTransitionNextFrame = () => new Promise((resolve) => {
-    const raf = window.requestAnimationFrame ?? ((callback) => window.setTimeout(callback, 16));
-    raf(() => resolve());
-});
-const dxRouteTransitionMutationOrFrame = () => new Promise((resolve) => {
+// Resolves once the router has replaced the page, or after a ceiling if it
+// renders something indistinguishable.
+//
+// This must be started *before* the route is asked for, so the observer is
+// already live when the update lands. Starting it afterwards meant the mutation
+// had usually already happened, leaving nothing to observe and the ceiling as
+// the de facto wait — measured at a flat ~133ms of doing nothing after the new
+// route was on screen, on every navigation.
+//
+// There is deliberately no requestAnimationFrame fallback: rendering is paused
+// inside a view transition's update callback, so frames do not tick and it
+// could never fire.
+const dxRouteTransitionRouteRendered = () => new Promise((resolve) => {
     let settled = false;
     const finish = () => {
         if (settled) return;
         settled = true;
+        window.clearTimeout(ceiling);
         observer?.disconnect?.();
         resolve();
     };
     const observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => finish());
+    // Only structural changes: an attribute tick from a clock or a progress bar
+    // is not the route arriving.
     observer?.observe?.(document.body ?? document.documentElement, {
         childList: true,
         subtree: true,
-        attributes: true,
     });
-    window.setTimeout(() => finish(), 120);
-    dxRouteTransitionNextFrame().then(() => dxRouteTransitionNextFrame()).then(() => finish());
+    const ceiling = window.setTimeout(() => finish(), 120);
+    if (!observer) finish();
 });
 
 try {
@@ -329,6 +349,11 @@ try {
         void document.documentElement.offsetHeight;
 
         const transition = document.startViewTransition(async () => {
+            // Watch first, then ask. The router usually renders while the ack
+            // is still in flight, so an observer started afterwards has already
+            // missed the only mutation it cares about.
+            const rendered = dxRouteTransitionRouteRendered();
+
             dioxus.send("navigate");
 
             const routeCommit = await dioxus.recv();
@@ -336,7 +361,7 @@ try {
                 throw new Error(`unexpected route transition ack: ${routeCommit}`);
             }
 
-            await dxRouteTransitionMutationOrFrame();
+            await rendered;
         });
 
         try {
@@ -373,9 +398,10 @@ where
         return;
     }
 
-    let mut transition = eval(VIEW_TRANSITION_NAVIGATE);
-    _ = transition.send(animation.data_value());
-    _ = transition.send(get_platform().data_value());
+    let script = VIEW_TRANSITION_NAVIGATE
+        .replace(ANIMATION_PLACEHOLDER, animation.data_value())
+        .replace(PLATFORM_PLACEHOLDER, get_platform().data_value());
+    let mut transition = eval(&script);
 
     loop {
         match transition.recv::<String>().await.as_deref() {
@@ -505,8 +531,25 @@ mod tests {
         assert!(VIEW_TRANSITION_NAVIGATE.contains("dioxus.send(\"navigate\")"));
         assert!(VIEW_TRANSITION_NAVIGATE.contains("const routeCommit = await dioxus.recv()"));
         assert!(VIEW_TRANSITION_NAVIGATE.contains("routeCommit !== \"navigated\""));
-        assert!(!VIEW_TRANSITION_NAVIGATE.contains("await dxRouteTransitionNextFrame();"));
-        assert!(VIEW_TRANSITION_NAVIGATE.contains("await dxRouteTransitionMutationOrFrame()"));
+        // The wait has to be armed before the route is asked for, or it misses
+        // the render it exists to observe and falls back to its ceiling.
+        // Scoped to the callback: the reduced-motion branch above it also asks
+        // for the route, and would otherwise match first.
+        let callback = VIEW_TRANSITION_NAVIGATE
+            .find("document.startViewTransition(async () =>")
+            .expect("the transition is started");
+        let body = &VIEW_TRANSITION_NAVIGATE[callback..];
+        let armed = body
+            .find("const rendered = dxRouteTransitionRouteRendered();")
+            .expect("the wait is armed");
+        let asked = body
+            .find("dioxus.send(\"navigate\")")
+            .expect("the route is asked for");
+        assert!(armed < asked, "the observer must be live before the request");
+        assert!(VIEW_TRANSITION_NAVIGATE.contains("await rendered;"));
+        // Frames do not tick inside a transition callback, so the frame-based
+        // fallback could never fire and is gone.
+        assert!(!VIEW_TRANSITION_NAVIGATE.contains("dxRouteTransitionNextFrame"));
         assert!(VIEW_TRANSITION_NAVIGATE.contains("await transition.ready"));
         assert!(!VIEW_TRANSITION_NAVIGATE.contains("console.info"));
         assert!(!VIEW_TRANSITION_NAVIGATE.contains("g3RouteTransition"));
@@ -602,12 +645,30 @@ mod tests {
     }
 
     #[test]
-    fn view_transition_navigate_forwards_both_animation_and_platform() {
-        assert!(VIEW_TRANSITION_NAVIGATE.contains("const animation = await dioxus.recv();"));
-        assert!(VIEW_TRANSITION_NAVIGATE.contains("const platform = await dioxus.recv();"));
+    fn animation_and_platform_are_written_in_rather_than_awaited() {
+        // Nothing may be awaited before the transition starts. Every round trip
+        // over the eval channel is dead time between the tap and the first
+        // frame of the animation, which is the one thing the user feels.
+        let start = VIEW_TRANSITION_NAVIGATE
+            .find("document.startViewTransition")
+            .expect("the transition is started");
         assert!(
-            VIEW_TRANSITION_NAVIGATE.contains("document.documentElement.dataset.routeTransitionPlatform = platform;")
+            !VIEW_TRANSITION_NAVIGATE[..start].contains("await dioxus.recv()"),
+            "no round trip may precede the snapshot"
         );
-        assert!(!VIEW_TRANSITION_NAVIGATE.contains("navigator.userAgent"));
+
+        let filled = VIEW_TRANSITION_NAVIGATE
+            .replace(ANIMATION_PLACEHOLDER, NavigationAnimation::CoverUp.data_value())
+            .replace(PLATFORM_PLACEHOLDER, Platform::Ios.data_value());
+        assert!(filled.contains(r#"const animation = "cover-up";"#));
+        assert!(filled.contains(r#"const platform = "ios";"#));
+        assert!(
+            !filled.contains("__DX_ROUTE_TRANSITION"),
+            "every placeholder is substituted"
+        );
+        assert!(
+            filled.contains("document.documentElement.dataset.routeTransitionPlatform = platform;")
+        );
+        assert!(!filled.contains("navigator.userAgent"));
     }
 }
