@@ -6,6 +6,7 @@ This crate keeps route animation rules next to your `Routable` enum, then expose
 
 - `#[route_transitions]` derives transition metadata from route variants.
 - `animated_navigate(route)` computes the animation from the current route and pushes the next route.
+- `animated_go_back(fallback)` takes the outgoing snapshot before popping router history, using the fallback route both to select the reverse animation and when no prior entry exists.
 - `RouteTransitionProvider` imports the default View Transition stylesheet.
 - `RouteTransitionRoot` wraps the app shell with the provider and cover marker.
 - `RouteTransitionBase`, `RouteTransitionCover`, and `RouteTransitionSegment` mark named snapshot regions explicitly.
@@ -114,6 +115,20 @@ button {
         animated_navigate(Route::NewItem {}).await;
     }),
     "New item"
+}
+```
+
+Use the matching history helper for Back affordances. A bare
+`navigator.go_back()` changes the route before the old page can be captured.
+
+```rust,ignore
+use dx_route_transitions::animated_go_back;
+
+button {
+    onclick: move |_| spawn(async move {
+        animated_go_back(Route::Items { tab: Tab::All }).await;
+    }),
+    "Back"
 }
 ```
 

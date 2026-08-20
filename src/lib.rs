@@ -10,8 +10,9 @@
 //!   JS bridge.
 //! - [`RouteTransitionProvider`], a small Dioxus provider component that imports the default View
 //!   Transition CSS.
-//! - [`animated_navigate`], a Dioxus router helper that wraps route changes in
-//!   `document.startViewTransition` without waiting for DOM mutations.
+//! - [`animated_navigate`] and [`animated_go_back`], Dioxus router helpers that
+//!   wrap route changes in `document.startViewTransition` without waiting for
+//!   DOM mutations.
 //!
 //! # Route transition attributes
 //!
@@ -189,7 +190,9 @@ pub fn set_platform(platform: Platform) {
 /// The platform currently used to style transitions. Falls back to
 /// compile-time/runtime auto-detection if [`set_platform`] was never called.
 pub fn get_platform() -> Platform {
-    GLOBAL_PLATFORM.with(|p| p.get()).unwrap_or_else(detect_platform)
+    GLOBAL_PLATFORM
+        .with(|p| p.get())
+        .unwrap_or_else(detect_platform)
 }
 
 /// Detect a reasonable default platform from `cfg(target_os)` (native
@@ -211,11 +214,7 @@ pub fn detect_platform() -> Platform {
     {
         detect_platform_web()
     }
-    #[cfg(not(any(
-        target_os = "ios",
-        target_os = "android",
-        target_arch = "wasm32"
-    )))]
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_arch = "wasm32")))]
     {
         Platform::Md
     }
@@ -384,6 +383,34 @@ try {
 }
 "#;
 
+async fn run_animated_navigation(animation: NavigationAnimation, mut navigate: impl FnMut()) {
+    let script = VIEW_TRANSITION_NAVIGATE
+        .replace(ANIMATION_PLACEHOLDER, animation.data_value())
+        .replace(PLATFORM_PLACEHOLDER, get_platform().data_value());
+    let mut transition = eval(&script);
+    let mut navigated = false;
+
+    loop {
+        match transition.recv::<String>().await.as_deref() {
+            Ok("navigate") => {
+                if !navigated {
+                    navigate();
+                    navigated = true;
+                }
+                _ = transition.send("navigated");
+            }
+            Ok("done") => break,
+            Ok("fallback") | Err(_) => {
+                if !navigated {
+                    navigate();
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+}
+
 pub async fn animated_navigate<Route>(route: Route)
 where
     Route: Clone + ToString + RouteTransitions + Routable + 'static,
@@ -398,25 +425,37 @@ where
         return;
     }
 
-    let script = VIEW_TRANSITION_NAVIGATE
-        .replace(ANIMATION_PLACEHOLDER, animation.data_value())
-        .replace(PLATFORM_PLACEHOLDER, get_platform().data_value());
-    let mut transition = eval(&script);
+    run_animated_navigation(animation, || {
+        _ = navigator.push(route.clone());
+    })
+    .await;
+}
 
-    loop {
-        match transition.recv::<String>().await.as_deref() {
-            Ok("navigate") => {
-                _ = navigator.push(route.clone());
-                _ = transition.send("navigated");
-            }
-            Ok("done") => break,
-            Ok("fallback") | Err(_) => {
-                _ = navigator.push(route);
-                break;
-            }
-            _ => {}
-        }
+/// Pop the router history while using `fallback` to select the reverse
+/// transition and as the destination when no history entry exists.
+///
+/// Calling [`dioxus_router::prelude::Navigator::go_back`] directly commits the
+/// route before a View Transition can take its outgoing snapshot. This helper
+/// starts the snapshot first, then performs the actual history traversal from
+/// inside the same acknowledgement handshake as [`animated_navigate`].
+pub async fn animated_go_back<Route>(fallback: Route)
+where
+    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+{
+    let navigator = use_navigator();
+    if !navigator.can_go_back() {
+        animated_navigate(fallback).await;
+        return;
     }
+
+    let current_route = router().current::<Route>().clone();
+    let animation = current_route.transition_to(&fallback);
+    if animation == NavigationAnimation::None {
+        navigator.go_back();
+        return;
+    }
+
+    run_animated_navigation(animation, || navigator.go_back()).await;
 }
 
 #[cfg(test)]
@@ -521,7 +560,10 @@ mod tests {
         let capture = script
             .find("document.startViewTransition(async () =>")
             .expect("transition is started");
-        assert!(attributes < flush, "the flush must come after the attributes");
+        assert!(
+            attributes < flush,
+            "the flush must come after the attributes"
+        );
         assert!(flush < capture, "the flush must come before the snapshot");
     }
 
@@ -545,7 +587,10 @@ mod tests {
         let asked = body
             .find("dioxus.send(\"navigate\")")
             .expect("the route is asked for");
-        assert!(armed < asked, "the observer must be live before the request");
+        assert!(
+            armed < asked,
+            "the observer must be live before the request"
+        );
         assert!(VIEW_TRANSITION_NAVIGATE.contains("await rendered;"));
         // Frames do not tick inside a transition callback, so the frame-based
         // fallback could never fire and is gone.
@@ -566,6 +611,24 @@ mod tests {
         assert!(production_source.contains("Ok(\"navigate\")"));
         assert!(production_source.contains("transition.send(\"navigated\")"));
         assert!(!production_source.contains("eprintln!"));
+    }
+
+    #[test]
+    fn history_back_uses_the_view_transition_handshake() {
+        let source = include_str!("lib.rs");
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+        let helper = production_source
+            .split("pub async fn animated_go_back")
+            .nth(1)
+            .expect("animated_go_back is public");
+
+        assert!(helper.contains("navigator.can_go_back()"));
+        assert!(helper.contains("animated_navigate(fallback).await"));
+        assert!(helper.contains("run_animated_navigation(animation"));
+        assert!(helper.contains("navigator.go_back()"));
     }
 
     #[test]
@@ -675,7 +738,10 @@ mod tests {
         );
 
         let filled = VIEW_TRANSITION_NAVIGATE
-            .replace(ANIMATION_PLACEHOLDER, NavigationAnimation::CoverUp.data_value())
+            .replace(
+                ANIMATION_PLACEHOLDER,
+                NavigationAnimation::CoverUp.data_value(),
+            )
             .replace(PLATFORM_PLACEHOLDER, Platform::Ios.data_value());
         assert!(filled.contains(r#"const animation = "cover-up";"#));
         assert!(filled.contains(r#"const platform = "ios";"#));
