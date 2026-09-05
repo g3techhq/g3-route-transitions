@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Added `root` and `pushed` route layers.
+- Added directed `forward` route relationships.
+- Added unkeyed and identity-keyed `replace` rules for in-place routes.
+- Generated layer-aware back-transition behavior.
+
 ## [0.1.0] - 2026-08-20
 
 Initial release.

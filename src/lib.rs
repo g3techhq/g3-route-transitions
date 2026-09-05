@@ -27,7 +27,7 @@
 //! #[route_transitions]
 //! #[derive(Clone, Routable, PartialEq)]
 //! enum Route {
-//!     #[transition(base, push(group = sections, order = tab))]
+//!     #[transition(root, replace)]
 //!     #[route("/sections?:tab")]
 //!     Sections { tab: SectionTab },
 //!
@@ -35,17 +35,25 @@
 //!     #[route("/items/new")]
 //!     NewItem {},
 //!
-//!     #[transition(cover, push(group = item_details, key = item_id, order = tab))]
+//!     #[transition(pushed, replace(key = item_id), forward = ItemComments)]
 //!     #[route("/items/:item_id?:tab")]
 //!     ItemDetails { item_id: String, tab: ItemTab },
+//!
+//!     #[transition(pushed)]
+//!     #[route("/items/:item_id/comments")]
+//!     ItemComments { item_id: String },
 //! }
 //! ```
 //!
 //! Attribute rules:
 //!
 //! - `base` marks a normal page. It is the default when no transition attribute exists.
-//! - `cover` marks a sheet/modal-like route. Navigating `base -> cover` returns
-//!   [`NavigationAnimation::CoverUp`]; `cover -> base` returns
+//! - `root` marks a stable application root such as a bottom-tab destination.
+//! - `pushed` marks a full-screen page above a root. Root-to-pushed navigation
+//!   uses [`NavigationAnimation::PushLeft`], and the reverse uses
+//!   [`NavigationAnimation::PushRight`].
+//! - `cover` marks a sheet/modal-like route. Navigating into a cover returns
+//!   [`NavigationAnimation::CoverUp`]; navigating out returns
 //!   [`NavigationAnimation::UncoverDown`].
 //! - `morph` marks a route that grows out of a card on a `base` route. Navigating
 //!   `base -> morph` returns [`NavigationAnimation::MorphIn`]; `morph -> base` returns
@@ -55,6 +63,13 @@
 //!   returns `PushRight`.
 //! - `key = field` scopes a push group to a route parameter, such as an item id.
 //! - `key = (field_a, field_b)` scopes a push group to multiple route parameters.
+//! - `forward = RouteA` or `forward = (RouteA, RouteB)` declares route variants
+//!   reached by drilling further into the hierarchy. The forward direction
+//!   pushes left and the reverse direction pushes right.
+//! - `replace` marks changes within the same route variant as in-place updates.
+//!   [`animated_navigate`] uses router replacement and skips the page transition,
+//!   so query-backed filters do not fill browser history. `replace(key = id)`
+//!   limits that behavior to matching logical records.
 //! - If two routes are not equivalent, not a cover/uncover pair, and not matching push peers, the
 //!   generated method returns [`NavigationAnimation::Fade`].
 //!
@@ -66,6 +81,9 @@
 //! - `route-transition-base`: the stable base page under covers.
 //! - `route-transition-cover`: the app shell that should slide over or off the base page.
 //! - `route-transition-segment`: the body area that should push left/right for peer routes.
+//! - `route-transition-page`: one full-viewport snapshot for pushed-page and
+//!   sheet transitions. Prefer [`RouteTransitionPage`] around each routed page
+//!   when the shell contains other transition markers.
 //!
 //! The runtime names `route-transition-cover` only during cover/uncover transitions so normal
 //! rendering and peer-route pushes do not create an extra named snapshot.
@@ -91,6 +109,10 @@ pub const ROUTE_TRANSITION_COVER_CLASS: &str = "route-transition-cover";
 /// Marks a sub-region that should animate independently of the page around
 /// it - a tab body swapping under a fixed header, for instance.
 pub const ROUTE_TRANSITION_SEGMENT_CLASS: &str = "route-transition-segment";
+/// Marks a full-viewport routed page. During push and sheet transitions this
+/// becomes one stable snapshot, avoiding nested header/body snapshots that can
+/// drift or overlap in embedded WebViews.
+pub const ROUTE_TRANSITION_PAGE_CLASS: &str = "route-transition-page";
 
 fn merge_transition_class(base: &'static str, extra: Option<&str>) -> String {
     match extra {
@@ -120,6 +142,21 @@ pub fn RouteTransitionCover(children: Element, class: Option<String>) -> Element
 #[component]
 pub fn RouteTransitionSegment(children: Element, class: Option<String>) -> Element {
     let class = merge_transition_class(ROUTE_TRANSITION_SEGMENT_CLASS, class.as_deref());
+
+    rsx! {
+        div { class, {children} }
+    }
+}
+
+/// Wraps one routed page in the library's full-viewport snapshot marker.
+///
+/// This is useful for application shells whose header, body, or navigation
+/// components already carry [`RouteTransitionBase`] or
+/// [`RouteTransitionSegment`] markers. The stylesheet suppresses those nested
+/// markers only inside this wrapper and captures the page as a single image.
+#[component]
+pub fn RouteTransitionPage(children: Element, class: Option<String>) -> Element {
+    let class = merge_transition_class(ROUTE_TRANSITION_PAGE_CLASS, class.as_deref());
 
     rsx! {
         div { class, {children} }
@@ -186,8 +223,8 @@ pub enum Platform {
     /// outgoing page slides back and dims rather than leaving the screen,
     /// page-sheet modals, quick cross-dissolves.
     Ios,
-    /// Material Design 3 motion: shared-axis slides, fade-through, modal
-    /// bottom sheets with a scrim.
+    /// Material Design 3 motion: shared-axis slides, quick cross-dissolves,
+    /// and modal bottom sheets with a scrim.
     Md,
 }
 
@@ -286,6 +323,10 @@ pub enum RouteTransitionLayer {
     /// A card-like element that morphs into (and back out of) its own
     /// full-screen route, distinct from a modal `Cover` layer.
     Morph,
+    /// A stable application root such as a bottom-tab destination.
+    Root,
+    /// A full-screen page pushed above an application root.
+    Pushed,
 }
 
 /// Implemented by a `Route` enum to declare how it animates toward each of
@@ -294,6 +335,26 @@ pub enum RouteTransitionLayer {
 pub trait RouteTransitions: PartialEq {
     /// The animation to play when navigating from `self` to `next`.
     fn transition_to(&self, next: &Self) -> NavigationAnimation;
+
+    /// Whether navigation from `self` to `next` should replace the current
+    /// browser-history entry rather than push a new one.
+    ///
+    /// The route macro uses this for `#[transition(replace)]` declarations.
+    /// Manual implementations can leave the default when every navigation
+    /// should add an entry.
+    fn replaces_history(&self, _next: &Self) -> bool {
+        false
+    }
+
+    /// The animation to use before traversing actual browser history.
+    ///
+    /// `fallback` is the destination used only when no history entry exists.
+    /// The default preserves the original pair-based behavior; the route macro
+    /// overrides it so covers always dismiss and pushed pages always pop even
+    /// when the real previous URL differs from the fallback.
+    fn transition_back(&self, fallback: &Self) -> NavigationAnimation {
+        self.transition_to(fallback)
+    }
 }
 
 #[component]
@@ -454,17 +515,30 @@ where
     Route: Clone + ToString + RouteTransitions + Routable + 'static,
 {
     let current_route = router().current::<Route>().clone();
+    if current_route == route {
+        return;
+    }
+
     let animation = current_route.transition_to(&route);
+    let replace = current_route.replaces_history(&route);
     let navigator = use_navigator();
     let route = route.to_string();
 
     if animation == NavigationAnimation::None {
-        _ = navigator.push(route);
+        if replace {
+            _ = navigator.replace(route);
+        } else {
+            _ = navigator.push(route);
+        }
         return;
     }
 
     run_animated_navigation(animation, || {
-        _ = navigator.push(route.clone());
+        if replace {
+            _ = navigator.replace(route.clone());
+        } else {
+            _ = navigator.push(route.clone());
+        }
     })
     .await;
 }
@@ -487,7 +561,7 @@ where
     }
 
     let current_route = router().current::<Route>().clone();
-    let animation = current_route.transition_to(&fallback);
+    let animation = current_route.transition_back(&fallback);
     if animation == NavigationAnimation::None {
         navigator.go_back();
         return;
@@ -567,10 +641,23 @@ mod tests {
         assert!(production_source.contains("pub const ROUTE_TRANSITION_BASE_CLASS"));
         assert!(production_source.contains("pub const ROUTE_TRANSITION_COVER_CLASS"));
         assert!(production_source.contains("pub const ROUTE_TRANSITION_SEGMENT_CLASS"));
+        assert!(production_source.contains("pub const ROUTE_TRANSITION_PAGE_CLASS"));
         assert!(production_source.contains("pub fn RouteTransitionBase"));
         assert!(production_source.contains("pub fn RouteTransitionCover"));
         assert!(production_source.contains("pub fn RouteTransitionSegment"));
+        assert!(production_source.contains("pub fn RouteTransitionPage"));
         assert!(production_source.contains("merge_transition_class"));
+    }
+    #[test]
+    fn full_page_snapshots_own_nested_push_motion() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+
+        assert!(stylesheet.contains(".route-transition-page"));
+        assert!(stylesheet.contains("view-transition-name: page"));
+        assert!(stylesheet.contains(".route-transition-page > .route-transition-base"));
+        assert!(stylesheet.contains(".route-transition-page .route-transition-segment"));
+        assert!(stylesheet.contains("view-transition-old(page)"));
+        assert!(stylesheet.contains("view-transition-new(page)"));
     }
     #[test]
     fn route_transition_root_wraps_provider_and_cover_marker() {
@@ -665,8 +752,26 @@ mod tests {
 
         assert!(helper.contains("navigator.can_go_back()"));
         assert!(helper.contains("animated_navigate(fallback).await"));
+        assert!(helper.contains("current_route.transition_back(&fallback)"));
         assert!(helper.contains("run_animated_navigation(animation"));
         assert!(helper.contains("navigator.go_back()"));
+    }
+
+    #[test]
+    fn in_place_routes_replace_history_without_crossing_the_js_boundary() {
+        let source = include_str!("lib.rs");
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+        let helper = production_source
+            .split("pub async fn animated_navigate")
+            .nth(1)
+            .expect("animated_navigate is public");
+
+        assert!(helper.contains("current_route.replaces_history(&route)"));
+        assert!(helper.contains("navigator.replace(route)"));
+        assert!(helper.contains("animation == NavigationAnimation::None"));
     }
 
     #[test]
@@ -692,8 +797,10 @@ mod tests {
 
         assert!(stylesheet.contains("--route-transition-cover-duration: 0.6s"));
         assert!(stylesheet.contains("--route-transition-push-duration: 260ms"));
-        assert!(stylesheet.contains("--route-transition-fade-duration: 200ms"));
+        assert!(stylesheet.contains("--route-transition-fade-duration: 150ms"));
         assert!(stylesheet.contains("--route-transition-morph-duration: 350ms"));
+        assert!(stylesheet.contains("--route-transition-md-sheet-dismiss-duration: 280ms"));
+        assert!(stylesheet.contains("to { transform: translateY(100vh); }"));
         assert!(!stylesheet.contains("route-transition-duration-debug"));
         assert!(!stylesheet.contains("route-transition-mobile-dim-base"));
         assert!(!stylesheet.contains("route-transition-mobile-undim-base"));
@@ -712,15 +819,14 @@ mod tests {
     }
 
     #[test]
-    fn fade_transitions_diverge_between_ios_cross_dissolve_and_md_fade_through() {
+    fn fade_transitions_are_the_same_fast_cross_dissolve_on_both_platforms() {
         let stylesheet = include_str!("../assets/route_transitions.css");
 
-        assert!(stylesheet.contains(
-            "html[data-route-transition-platform=\"ios\"][data-route-transition=\"fade\"]"
-        ));
-        assert!(stylesheet.contains("route-transition-md-fade-through-out"));
-        assert!(stylesheet.contains("route-transition-md-fade-through-in"));
-        assert!(stylesheet.contains("animation-delay"));
+        assert!(
+            stylesheet.contains("html[data-route-transition=\"fade\"]::view-transition-old(root)")
+        );
+        assert!(stylesheet.contains("route-transition-fade-out"));
+        assert!(!stylesheet.contains("route-transition-md-fade-through"));
     }
 
     #[test]

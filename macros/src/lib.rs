@@ -19,9 +19,12 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 /// Supported variant metadata:
 ///
 /// - `#[transition(base)]` marks a normal page. This is also the default.
-/// - `#[transition(cover)]` marks a sheet/modal route. Navigating from a base
-///   route to a cover route returns `NavigationAnimation::CoverUp`; navigating
-///   back from cover to base returns `NavigationAnimation::UncoverDown`.
+/// - `#[transition(root)]` marks a stable application root such as a
+///   bottom-tab destination.
+/// - `#[transition(pushed)]` marks a full-screen page pushed above a root.
+/// - `#[transition(cover)]` marks a sheet/modal route. Navigating into a cover
+///   returns `NavigationAnimation::CoverUp`; navigating out returns
+///   `NavigationAnimation::UncoverDown`.
 /// - `#[transition(morph)]` marks a route that grows out of a card on a base
 ///   route. Base-to-morph returns `NavigationAnimation::MorphIn`;
 ///   morph-to-base returns `NavigationAnimation::MorphOut`.
@@ -30,6 +33,12 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 ///   to a smaller value pushes right.
 /// - `key = field` or `key = (field_a, field_b)` scopes push comparisons to
 ///   matching route parameters.
+/// - `forward = Route` or `forward = (RouteA, RouteB)` declares directed
+///   drill-down destinations. Forward navigation pushes left; its reverse
+///   pushes right.
+/// - `replace` makes changes between values of the same variant update the
+///   current browser-history entry without a page animation.
+///   `replace(key = field)` scopes that behavior to a logical record.
 ///
 /// Example:
 ///
@@ -37,13 +46,17 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 /// #[route_transitions]
 /// #[derive(Clone, Routable, PartialEq)]
 /// enum Route {
-///     #[transition(base, push(group = tabs, order = tab))]
+///     #[transition(root, replace)]
 ///     #[route("/items?:tab")]
 ///     Items { tab: ItemsTab },
 ///
-///     #[transition(cover, push(group = item_details, key = item_id, order = tab))]
+///     #[transition(pushed, replace(key = item_id), forward = ItemComments)]
 ///     #[route("/items/:item_id?:tab")]
 ///     ItemDetails { item_id: String, tab: ItemTab },
+///
+///     #[transition(pushed)]
+///     #[route("/items/:item_id/comments")]
+///     ItemComments { item_id: String },
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -73,6 +86,14 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(arms) => arms,
         Err(error) => return error.to_compile_error().into(),
     };
+    let forward_arms = match build_forward_arms(enum_ident, &route_variants) {
+        Ok(arms) => arms,
+        Err(error) => return error.to_compile_error().into(),
+    };
+    let replace_arms = match build_replace_arms(enum_ident, &route_variants) {
+        Ok(arms) => arms,
+        Err(error) => return error.to_compile_error().into(),
+    };
 
     quote! {
         #route_enum
@@ -88,6 +109,20 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 match (self, next) {
                     #(#push_arms,)*
                     _ => None,
+                }
+            }
+
+            fn transition_pushes_forward_to(&self, next: &#enum_ident) -> bool {
+                match (self, next) {
+                    #(#forward_arms,)*
+                    _ => false,
+                }
+            }
+
+            fn transition_replaces_to(&self, next: &#enum_ident) -> bool {
+                match (self, next) {
+                    #(#replace_arms,)*
+                    _ => false,
                 }
             }
 
@@ -108,15 +143,30 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     return ::dx_route_transitions::NavigationAnimation::None;
                 }
 
+                if self.transition_replaces_to(next) {
+                    return ::dx_route_transitions::NavigationAnimation::None;
+                }
+
+                if self.transition_pushes_forward_to(next) {
+                    return ::dx_route_transitions::NavigationAnimation::PushLeft;
+                }
+                if next.transition_pushes_forward_to(self) {
+                    return ::dx_route_transitions::NavigationAnimation::PushRight;
+                }
+
                 match (self.transition_layer(), next.transition_layer()) {
                     (
-                        ::dx_route_transitions::RouteTransitionLayer::Base,
+                        current,
                         ::dx_route_transitions::RouteTransitionLayer::Cover,
-                    ) => return ::dx_route_transitions::NavigationAnimation::CoverUp,
+                    ) if current != ::dx_route_transitions::RouteTransitionLayer::Cover => {
+                        return ::dx_route_transitions::NavigationAnimation::CoverUp
+                    },
                     (
                         ::dx_route_transitions::RouteTransitionLayer::Cover,
-                        ::dx_route_transitions::RouteTransitionLayer::Base,
-                    ) => return ::dx_route_transitions::NavigationAnimation::UncoverDown,
+                        next,
+                    ) if next != ::dx_route_transitions::RouteTransitionLayer::Cover => {
+                        return ::dx_route_transitions::NavigationAnimation::UncoverDown
+                    },
                     (
                         ::dx_route_transitions::RouteTransitionLayer::Base,
                         ::dx_route_transitions::RouteTransitionLayer::Morph,
@@ -125,6 +175,14 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         ::dx_route_transitions::RouteTransitionLayer::Morph,
                         ::dx_route_transitions::RouteTransitionLayer::Base,
                     ) => return ::dx_route_transitions::NavigationAnimation::MorphOut,
+                    (
+                        ::dx_route_transitions::RouteTransitionLayer::Root,
+                        ::dx_route_transitions::RouteTransitionLayer::Pushed,
+                    ) => return ::dx_route_transitions::NavigationAnimation::PushLeft,
+                    (
+                        ::dx_route_transitions::RouteTransitionLayer::Pushed,
+                        ::dx_route_transitions::RouteTransitionLayer::Root,
+                    ) => return ::dx_route_transitions::NavigationAnimation::PushRight,
                     _ => {}
                 }
 
@@ -143,6 +201,28 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
 
                 ::dx_route_transitions::NavigationAnimation::Fade
+            }
+
+            fn replaces_history(&self, next: &#enum_ident) -> bool {
+                self.transition_replaces_to(next)
+            }
+
+            fn transition_back(
+                &self,
+                fallback: &#enum_ident,
+            ) -> ::dx_route_transitions::NavigationAnimation {
+                match self.transition_layer() {
+                    ::dx_route_transitions::RouteTransitionLayer::Cover => {
+                        ::dx_route_transitions::NavigationAnimation::UncoverDown
+                    }
+                    ::dx_route_transitions::RouteTransitionLayer::Pushed => {
+                        ::dx_route_transitions::NavigationAnimation::PushRight
+                    }
+                    ::dx_route_transitions::RouteTransitionLayer::Morph => {
+                        ::dx_route_transitions::NavigationAnimation::MorphOut
+                    }
+                    _ => self.transition_to(fallback),
+                }
             }
         }
     }
@@ -186,10 +266,88 @@ fn build_layer_arms(
                 RouteLayer::Morph => {
                     quote! { ::dx_route_transitions::RouteTransitionLayer::Morph }
                 }
+                RouteLayer::Root => {
+                    quote! { ::dx_route_transitions::RouteTransitionLayer::Root }
+                }
+                RouteLayer::Pushed => {
+                    quote! { ::dx_route_transitions::RouteTransitionLayer::Pushed }
+                }
             };
             Ok(quote! { #pattern => #layer })
         })
         .collect()
+}
+
+fn build_forward_arms(
+    enum_ident: &Ident,
+    route_variants: &[RouteVariant],
+) -> Result<Vec<TokenStream2>> {
+    let variants_by_name = route_variants
+        .iter()
+        .map(|variant| (variant.ident.to_string(), variant))
+        .collect::<BTreeMap<_, _>>();
+    let mut arms = Vec::new();
+
+    for from in route_variants {
+        let from_pattern = build_layer_pattern(enum_ident, &from.ident, &from.fields)?;
+        for target in &from.transition.forward {
+            let Some(to) = variants_by_name.get(&target.to_string()) else {
+                return Err(Error::new_spanned(
+                    target,
+                    "forward transition target is not a route variant",
+                ));
+            };
+            let to_pattern = build_layer_pattern(enum_ident, &to.ident, &to.fields)?;
+            arms.push(quote! { (#from_pattern, #to_pattern) => true });
+        }
+    }
+
+    Ok(arms)
+}
+
+fn build_replace_arms(
+    enum_ident: &Ident,
+    route_variants: &[RouteVariant],
+) -> Result<Vec<TokenStream2>> {
+    let mut arms = Vec::new();
+
+    for variant in route_variants {
+        let Some(replace) = &variant.transition.replace else {
+            continue;
+        };
+        validate_named_fields(variant, replace.key.iter().collect(), "replace")?;
+
+        if replace.key.is_empty() {
+            let from = build_layer_pattern(enum_ident, &variant.ident, &variant.fields)?;
+            let to = build_layer_pattern(enum_ident, &variant.ident, &variant.fields)?;
+            arms.push(quote! { (#from, #to) => true });
+            continue;
+        }
+
+        let from_aliases = key_aliases("__route_transition_replace_from", &replace.key);
+        let to_aliases = key_aliases("__route_transition_replace_to", &replace.key);
+        let from = build_key_pattern(
+            enum_ident,
+            &variant.ident,
+            &variant.fields,
+            &from_aliases,
+        )?;
+        let to = build_key_pattern(
+            enum_ident,
+            &variant.ident,
+            &variant.fields,
+            &to_aliases,
+        )?;
+        let guard = from_aliases
+            .iter()
+            .zip(&to_aliases)
+            .map(|((_, from), (_, to))| quote! { #from == #to })
+            .collect::<Vec<_>>();
+
+        arms.push(quote! { (#from, #to) if #(#guard)&&* => true });
+    }
+
+    Ok(arms)
 }
 
 fn build_push_ordering_arms(
@@ -234,10 +392,22 @@ fn build_push_ordering_arms(
 }
 
 fn validate_push_fields(variant: &RouteVariant, push: &PushArgs) -> Result<()> {
+    validate_named_fields(variant, push.used_fields(), "push")
+}
+
+fn validate_named_fields(
+    variant: &RouteVariant,
+    used_fields: Vec<&Ident>,
+    transition_name: &str,
+) -> Result<()> {
+    if used_fields.is_empty() {
+        return Ok(());
+    }
+
     let Fields::Named(fields) = &variant.fields else {
         return Err(Error::new_spanned(
             &variant.ident,
-            "push transitions require named route fields",
+            format!("{transition_name} transitions require named route fields"),
         ));
     };
 
@@ -247,16 +417,48 @@ fn validate_push_fields(variant: &RouteVariant, push: &PushArgs) -> Result<()> {
         .filter_map(|field| field.ident.as_ref().map(ToString::to_string))
         .collect::<BTreeSet<_>>();
 
-    for field in push.used_fields() {
+    for field in used_fields {
         if !field_names.contains(&field.to_string()) {
             return Err(Error::new_spanned(
                 field,
-                "transition push field is not present on this route variant",
+                format!("transition {transition_name} field is not present on this route variant"),
             ));
         }
     }
 
     Ok(())
+}
+
+fn key_aliases(prefix: &str, fields: &[Ident]) -> Vec<(Ident, Ident)> {
+    fields
+        .iter()
+        .cloned()
+        .map(|field| {
+            let alias = format_ident!("{}_{}", prefix, field);
+            (field, alias)
+        })
+        .collect()
+}
+
+fn build_key_pattern(
+    enum_ident: &Ident,
+    variant_ident: &Ident,
+    fields: &Fields,
+    aliases: &[(Ident, Ident)],
+) -> Result<TokenStream2> {
+    match fields {
+        Fields::Named(_) => {
+            let bindings = aliases
+                .iter()
+                .map(|(field, alias)| quote! { #field: #alias })
+                .collect::<Vec<_>>();
+            Ok(quote! { #enum_ident::#variant_ident { #(#bindings),*, .. } })
+        }
+        Fields::Unnamed(_) | Fields::Unit => Err(Error::new_spanned(
+            variant_ident,
+            "keyed replace transitions require named route fields",
+        )),
+    }
 }
 
 fn build_layer_pattern(
@@ -322,6 +524,8 @@ struct RouteVariant {
 struct TransitionArgs {
     layer: RouteLayer,
     push: Option<PushArgs>,
+    forward: Vec<Ident>,
+    replace: Option<ReplaceArgs>,
 }
 
 impl Default for TransitionArgs {
@@ -329,6 +533,8 @@ impl Default for TransitionArgs {
         Self {
             layer: RouteLayer::Base,
             push: None,
+            forward: Vec::new(),
+            replace: None,
         }
     }
 }
@@ -343,10 +549,25 @@ impl Parse for TransitionArgs {
                 "base" => args.layer = RouteLayer::Base,
                 "cover" => args.layer = RouteLayer::Cover,
                 "morph" => args.layer = RouteLayer::Morph,
+                "root" => args.layer = RouteLayer::Root,
+                "pushed" => args.layer = RouteLayer::Pushed,
                 "push" => {
                     let content;
                     parenthesized!(content in input);
                     args.push = Some(content.parse()?);
+                }
+                "forward" => {
+                    input.parse::<Token![=]>()?;
+                    args.forward = parse_ident_list(input)?;
+                }
+                "replace" => {
+                    args.replace = if input.peek(syn::token::Paren) {
+                        let content;
+                        parenthesized!(content in input);
+                        Some(content.parse()?)
+                    } else {
+                        Some(ReplaceArgs::default())
+                    };
                 }
                 _ => return Err(Error::new_spanned(ident, "unknown transition argument")),
             }
@@ -365,6 +586,31 @@ enum RouteLayer {
     Base,
     Cover,
     Morph,
+    Root,
+    Pushed,
+}
+
+#[derive(Clone, Default)]
+struct ReplaceArgs {
+    key: Vec<Ident>,
+}
+
+impl Parse for ReplaceArgs {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        if name.to_string() != "key" {
+            return Err(Error::new_spanned(name, "unknown replace argument"));
+        }
+        input.parse::<Token![=]>()?;
+        let key = parse_key(input)?;
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+        }
+        if !input.is_empty() {
+            return Err(input.error("replace accepts only a key argument"));
+        }
+        Ok(Self { key })
+    }
 }
 
 #[derive(Clone)]
@@ -415,6 +661,18 @@ impl Parse for PushArgs {
 }
 
 fn parse_key(input: ParseStream<'_>) -> Result<Vec<Ident>> {
+    if input.peek(syn::token::Paren) {
+        let content;
+        parenthesized!(content in input);
+        Ok(Punctuated::<Ident, Token![,]>::parse_terminated(&content)?
+            .into_iter()
+            .collect())
+    } else {
+        Ok(vec![input.parse()?])
+    }
+}
+
+fn parse_ident_list(input: ParseStream<'_>) -> Result<Vec<Ident>> {
     if input.peek(syn::token::Paren) {
         let content;
         parenthesized!(content in input);

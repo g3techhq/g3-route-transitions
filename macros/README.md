@@ -8,4 +8,7 @@ Most users should depend on `dx-route-transitions` instead of this crate directl
 use dx_route_transitions::route_transitions;
 ```
 
-The macro implements `dx_route_transitions::RouteTransitions` for a Dioxus `Routable` enum and consumes per-variant `#[transition(...)]` attributes.
+The macro implements `dx_route_transitions::RouteTransitions` for a Dioxus
+`Routable` enum and consumes per-variant `#[transition(...)]` attributes. It
+supports route layers (`base`, `root`, `pushed`, `cover`, `morph`), directed
+`forward` edges, same-variant `replace` rules, and ordered `push` groups.
