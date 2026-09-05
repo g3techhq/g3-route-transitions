@@ -1,4 +1,4 @@
-# dx-route-transitions
+# g3-route-transitions
 
 Route-owned View Transition helpers for Dioxus Router.
 
@@ -7,6 +7,8 @@ This crate keeps route animation rules next to your `Routable` enum, then expose
 - `#[route_transitions]` derives transition metadata from route variants.
 - `animated_navigate(route)` computes the animation and history action from the current route. In-place route updates replace history; ordinary navigation pushes it.
 - `animated_go_back(fallback)` takes the outgoing snapshot before popping actual router history. The fallback is used only when no prior entry exists.
+- `try_animated_go_back()` animates a real pop and reports whether history existed, which is useful for platform Back gestures.
+- The optional `native-back` feature connects Android system Back from `g3-native-plugins` to `try_animated_go_back()`.
 - `RouteTransitionProvider` imports the default View Transition stylesheet.
 - `RouteTransitionRoot` wraps the app shell with the provider and cover marker.
 - `RouteTransitionBase`, `RouteTransitionCover`, `RouteTransitionSegment`, and `RouteTransitionPage` mark snapshot regions explicitly.
@@ -30,13 +32,20 @@ Call `set_platform(Platform::Ios)` / `set_platform(Platform::Md)` once at startu
 ```toml
 [dependencies]
 dioxus = { version = "0.7.9", features = ["router"] }
-dx-route-transitions = "0.1"
+g3-route-transitions = "0.1"
 ```
 
-The Rust crate name is `dx_route_transitions`:
+For automatic Android system Back integration, enable `native-back`:
+
+```toml
+[dependencies]
+g3-route-transitions = { version = "0.1", features = ["native-back"] }
+```
+
+The Rust crate name is `g3_route_transitions`:
 
 ```rust
-use dx_route_transitions::{animated_navigate, route_transitions, RouteTransitionRoot};
+use g3_route_transitions::{animated_navigate, route_transitions, RouteTransitionRoot};
 ```
 
 ## Define Route Metadata
@@ -45,7 +54,7 @@ Add `#[route_transitions]` to the same enum that derives `Routable`. Use `#[tran
 
 ```rust,ignore
 use dioxus::prelude::*;
-use dx_route_transitions::route_transitions;
+use g3_route_transitions::route_transitions;
 
 #[route_transitions]
 #[derive(Clone, Routable, PartialEq)]
@@ -86,7 +95,7 @@ Transition rules:
 `RouteTransitionRoot` is the common app-shell wrapper. It loads the transition CSS and marks the shell as the cover snapshot.
 
 ```rust,ignore
-use dx_route_transitions::RouteTransitionRoot;
+use g3_route_transitions::RouteTransitionRoot;
 
 #[component]
 fn App() -> Element {
@@ -101,7 +110,7 @@ fn App() -> Element {
 For more explicit layouts, use the marker components:
 
 ```rust,ignore
-use dx_route_transitions::{RouteTransitionBase, RouteTransitionSegment};
+use g3_route_transitions::{RouteTransitionBase, RouteTransitionSegment};
 
 rsx! {
     RouteTransitionBase { nav { "Tabs or base page" } }
@@ -115,7 +124,7 @@ as one viewport-sized image, which prevents independent snapshots from
 overlapping or exposing an embedded WebView's background:
 
 ```rust,ignore
-use dx_route_transitions::RouteTransitionPage;
+use g3_route_transitions::RouteTransitionPage;
 
 rsx! {
     RouteTransitionPage {
@@ -147,7 +156,7 @@ Use the matching history helper for Back affordances. A bare
 `navigator.go_back()` changes the route before the old page can be captured.
 
 ```rust,ignore
-use dx_route_transitions::animated_go_back;
+use g3_route_transitions::animated_go_back;
 
 button {
     onclick: move |_| spawn(async move {
@@ -163,3 +172,34 @@ replace, or pop the Dioxus route, waits for the route commit, and then releases
 the transition. If `document.startViewTransition` is unavailable or the user
 prefers reduced motion, navigation falls back to the same router action without
 animation.
+
+## Android System Back
+
+With the `native-back` feature enabled, call one hook in a layout beneath the
+Dioxus router:
+
+```rust,ignore
+use g3_route_transitions::use_native_back_navigation;
+
+#[component]
+fn AppLayout() -> Element {
+    use_native_back_navigation::<Route>();
+
+    rsx! { Outlet::<Route> {} }
+}
+```
+
+That is the complete connector. The hook prepares `g3-native-plugins`, tracks
+real Dioxus router history, enables Android interception only when a pop is
+possible, and calls the same animated operation used by visible Back buttons.
+It reuses `NativePluginsProvider` when the app already has one and otherwise
+owns the Back plugin itself.
+
+Dialogs, sheets, fullscreen players, and other higher-priority UI can claim the
+cancelable `g3nativeback` window event with `event.preventDefault()`. If such UI
+can be open at the root of router history, use
+`use_native_back_navigation_with_interception::<Route>(is_open)` so the native
+callback remains enabled until that UI closes. After an actual route pop, the
+library emits `g3routebacktransitionend` for optional work such as restoring
+scroll position. If no UI claims an intercepted event and no route can be
+popped, the hook passes that press back to Android instead of trapping it.
