@@ -1,11 +1,18 @@
 # Changelog
 
-All notable changes to `dx-route-transitions` are documented here. The format follows
+All notable changes to `g3-route-transitions` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Added the optional `native-back` integration with `g3-native-plugins`,
+  including hooks that connect Android system Back directly to animated Dioxus
+  router history without app-specific Rust/JavaScript bridges.
+- Added `try_animated_go_back`, which preserves the operating system's root
+  behavior when no router history exists.
+- Back animation selection now depends only on the current route layer rather
+  than a fallback route that may not be the actual history destination.
 - Added `root` and `pushed` route layers plus directed `forward` edges for
   navigation-stack transitions.
 - Added `replace` route metadata so same-page query/filter updates replace

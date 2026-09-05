@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "dx-route-transitions-macros"
+name = "g3-route-transitions-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",

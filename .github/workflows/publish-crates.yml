@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish dx-route-transitions crates
+    name: Publish g3-route-transitions crates
     runs-on: ubuntu-latest
     environment: crates-io
 
@@ -46,7 +46,7 @@ jobs:
 
           if [[ "${DRY_RUN}" == "true" ]]; then
             cargo publish --dry-run --manifest-path macros/Cargo.toml
-            echo "Listing package files for dx-route-transitions; full dry-run requires dx-route-transitions-macros to exist on crates.io first."
+            echo "Listing package files for g3-route-transitions; full dry-run requires g3-route-transitions-macros to exist on crates.io first."
             cargo package --list
             exit 0
           fi
