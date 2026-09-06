@@ -4,6 +4,7 @@ version = "0.1.0"
 
 edition = "2024"
 description = "Route-owned View Transition helpers for Dioxus Router."
+repository = "https://github.com/g3techhq/g3-route-transitions"
 readme = "README.md"
 documentation = "https://docs.rs/g3-route-transitions"
 license = "MIT OR Apache-2.0"
