@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-06
+
+Initial release.
+
 - Added the optional `native-back` integration with `g3-native-plugins`,
   including hooks that connect Android system Back directly to animated Dioxus
   router history without app-specific Rust/JavaScript bridges.
@@ -23,11 +27,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shells with nested transition markers.
 - Made iOS and Material peer fades the same faster cross-dissolve, and made
   Material sheet dismissal faster with full downward travel.
-
-## [0.1.0] - 2026-08-20
-
-Initial release.
-
 - Route-owned View Transition helpers for Dioxus Router: `animated_navigate`,
   the `RouteTransitions` trait, and the `route_transitions` macro.
 - Eight navigation animations (fade, push, cover/uncover, morph) that each

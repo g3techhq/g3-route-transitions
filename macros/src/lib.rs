@@ -511,7 +511,7 @@ struct ReplaceArgs {
 impl Parse for ReplaceArgs {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let name: Ident = input.parse()?;
-        if name.to_string() != "key" {
+        if name != "key" {
             return Err(Error::new_spanned(name, "unknown replace argument"));
         }
         input.parse::<Token![=]>()?;
@@ -534,7 +534,7 @@ struct PushArgs {
 impl PushArgs {
     fn used_fields(&self) -> Vec<&Ident> {
         let mut fields = self.key.iter().collect::<Vec<_>>();
-        if !fields.iter().any(|field| *field == &self.order) {
+        if !fields.contains(&&self.order) {
             fields.push(&self.order);
         }
         fields

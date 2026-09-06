@@ -4,6 +4,7 @@ version = "0.1.0"
 
 edition = "2024"
 description = "Proc macro support for g3-route-transitions."
+repository = "https://github.com/g3techhq/g3-route-transitions"
 readme = "README.md"
 documentation = "https://docs.rs/g3-route-transitions-macros"
 license = "MIT OR Apache-2.0"
