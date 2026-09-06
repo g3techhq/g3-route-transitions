@@ -10,7 +10,7 @@ documentation = "https://docs.rs/g3-route-transitions"
 license = "MIT OR Apache-2.0"
 keywords = ["dioxus", "router", "transitions", "view-transitions"]
 categories = ["gui", "wasm", "web-programming"]
-include = ["Cargo.toml", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE", "src/**", "assets/**"]
+include = ["Cargo.toml", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE", "src/**", "assets/**", "tests/**"]
 
 [lib]
 name = "g3_route_transitions"
