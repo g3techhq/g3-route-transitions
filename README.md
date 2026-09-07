@@ -1,5 +1,10 @@
 # g3-route-transitions
 
+[![CI](https://github.com/g3techhq/g3-route-transitions/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/g3techhq/g3-route-transitions/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/g3-route-transitions.svg)](https://crates.io/crates/g3-route-transitions)
+[![docs.rs](https://docs.rs/g3-route-transitions/badge.svg)](https://docs.rs/g3-route-transitions)
+[![License](https://img.shields.io/crates/l/g3-route-transitions.svg)](#license)
+
 Route-owned View Transition helpers for Dioxus Router.
 
 This crate keeps route animation rules next to your `Routable` enum, then exposes navigation helpers and explicit snapshot marker components:
@@ -203,3 +208,7 @@ callback remains enabled until that UI closes. After an actual route pop, the
 library emits `g3routebacktransitionend` for optional work such as restoring
 scroll position. If no UI claims an intercepted event and no route can be
 popped, the hook passes that press back to Android instead of trapping it.
+
+## License
+
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.
