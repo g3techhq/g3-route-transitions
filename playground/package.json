@@ -1,0 +1,9 @@
+{
+  "name": "g3-route-transitions-capture",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Optional browser capture tooling for the route transitions playground",
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

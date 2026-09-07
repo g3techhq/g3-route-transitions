@@ -7,6 +7,38 @@
 
 Route-owned View Transition helpers for Dioxus Router.
 
+## Transition playground
+
+The repository includes a focused, video-friendly playground that demonstrates
+the complete transition vocabulary in a simulated mobile app. Switch between
+iOS and Material motion, trigger individual transitions, or use **Play all** for
+a repeatable recording sequence.
+
+[![Route transitions playground animation](docs/media/route-transitions-demo.webp)](docs/media/route-transitions-demo.mp4)
+
+_Click the animated preview for the full-resolution video._
+
+```sh
+cd playground
+dx serve
+```
+
+The sequence covers push and pop, sheet presentation and dismissal, peer-route
+fade, segmented-tab filmstrip motion, and container morph in both platform
+styles. The tab demo also combines `push` with `replace`, so changing tabs
+animates directionally without adding every selection to browser history. The
+controls remain outside the animated viewport so every transition can be
+compared against the same frame.
+
+To regenerate the README media while the playground is running on port 8080,
+install the optional capture dependency and run the recording recipe. FFmpeg
+must also be available on `PATH`.
+
+```sh
+npm ci --prefix playground
+just record-playground
+```
+
 This crate keeps route animation rules next to your `Routable` enum, then exposes navigation helpers and explicit snapshot marker components:
 
 - `#[route_transitions]` derives transition metadata from route variants.

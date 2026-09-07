@@ -36,8 +36,13 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 ///   drill-down destinations. Forward navigation pushes left; its reverse
 ///   pushes right.
 /// - `replace` makes changes between values of the same variant update the
-///   current browser-history entry without a page animation.
-///   `replace(key = field)` scopes that behavior to a logical record.
+///   current browser-history entry instead of pushing a new one.
+///   `replace(key = field)` scopes that behavior to a logical record. `replace`
+///   governs history, not motion: on its own it also suppresses the animation,
+///   but combined with `push` the route still slides while replacing the entry
+///   in place. That pairing is what a segmented control wants - the tab body
+///   moves left or right, and Back leaves the screen rather than walking back
+///   through every tab the user touched.
 ///
 /// Example:
 ///
@@ -103,9 +108,7 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         ::g3_route_transitions::RouteTransitions >::transition_to(self, next) } } impl
         ::g3_route_transitions::RouteTransitions for # enum_ident { fn transition_to(&
         self, next : &# enum_ident,) -> ::g3_route_transitions::NavigationAnimation { if
-        self == next { return ::g3_route_transitions::NavigationAnimation::None; } if
-        self.transition_replaces_to(next) { return
-        ::g3_route_transitions::NavigationAnimation::None; } if self
+        self == next { return ::g3_route_transitions::NavigationAnimation::None; } if self
         .transition_pushes_forward_to(next) { return
         ::g3_route_transitions::NavigationAnimation::PushLeft; } if next
         .transition_pushes_forward_to(self) { return
@@ -134,7 +137,9 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         ::g3_route_transitions::NavigationAnimation::PushLeft } std::cmp::Ordering::Less
         => { ::g3_route_transitions::NavigationAnimation::PushRight }
         std::cmp::Ordering::Equal => { ::g3_route_transitions::NavigationAnimation::None
-        } }; } ::g3_route_transitions::NavigationAnimation::Fade } fn replaces_history(&
+        } }; } if self.transition_replaces_to(next) { return
+        ::g3_route_transitions::NavigationAnimation::None; }
+        ::g3_route_transitions::NavigationAnimation::Fade } fn replaces_history(&
         self, next : &# enum_ident) -> bool { self.transition_replaces_to(next) } fn
         transition_back(& self) -> ::g3_route_transitions::NavigationAnimation { match
         self.transition_layer() { ::g3_route_transitions::RouteTransitionLayer::Cover =>

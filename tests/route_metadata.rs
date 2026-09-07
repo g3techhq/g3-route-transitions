@@ -16,6 +16,8 @@ enum Route {
     Ratings { id: u8, filter: u8 },
     #[transition(pushed, forward = Detail)]
     Person { id: u8 },
+    #[transition(cover, replace(key = id), push(group = tabs, key = id, order = tab))]
+    Tabs { id: u8, tab: u8 },
 }
 #[test]
 fn roots_push_full_screen_pages_and_fade_between_peers() {
@@ -55,6 +57,30 @@ fn in_place_variants_replace_history_with_optional_identity_keys() {
     let other_person = Route::Ratings { id: 8, filter: 1 };
     assert!(ratings.replaces_history(&filtered_ratings));
     assert!(!ratings.replaces_history(&other_person));
+}
+
+/// A segmented control wants both halves: the body slides toward the tab the
+/// user picked, and Back leaves the screen instead of retracing every tab they
+/// touched. `replace` decides how history is written; when the same variant
+/// also declares `push`, the ordering still selects the animation.
+#[test]
+fn segmented_peers_slide_while_still_replacing_history() {
+    let first = Route::Tabs { id: 7, tab: 0 };
+    let second = Route::Tabs { id: 7, tab: 1 };
+
+    assert_eq!(first.transition_to(&second), NavigationAnimation::PushLeft);
+    assert_eq!(second.transition_to(&first), NavigationAnimation::PushRight);
+    assert!(first.replaces_history(&second));
+    assert!(second.replaces_history(&first));
+
+    // The push group is keyed, so tabs of a different record are not peers and
+    // neither slide nor replace.
+    let other_record = Route::Tabs { id: 8, tab: 1 };
+    assert_eq!(
+        first.transition_to(&other_record),
+        NavigationAnimation::Fade
+    );
+    assert!(!first.replaces_history(&other_record));
 }
 #[test]
 fn browser_back_uses_current_route_layer_semantics() {

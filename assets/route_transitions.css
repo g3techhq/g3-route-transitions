@@ -7,6 +7,11 @@
     --route-transition-ios-ease: cubic-bezier(0.4, 0, 0.2, 1);
     --route-transition-md-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
     --route-transition-md-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+    /* A segment slide is a filmstrip, not a page push: both panes travel the
+       full width locked together, so they need one shared curve rather than
+       the accelerate/decelerate pair a page push uses. */
+    --route-transition-segment-duration: var(--route-transition-push-duration);
+    --route-transition-segment-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html[data-route-transition-platform="md"] {
@@ -236,35 +241,73 @@ html[data-route-transition="push-right"]::view-transition-image-pair(page) {
     mix-blend-mode: normal;
 }
 
+/* A segment push is a filmstrip: the two tab bodies are neighbouring frames of
+   one strip, so they travel the full width at the same speed on the same curve
+   and never cross-fade. A page push is a different gesture - one surface moving
+   over another - and keeps the platform-specific parallax/shared-axis pairs
+   below.
+
+   Both panes must also composite normally. The user-agent stylesheet gives
+   `::view-transition-old/new` `mix-blend-mode: plus-lighter` for smooth
+   cross-fades; with two fully opaque panes sliding across each other that
+   blend additively and read as one pane ghosting through the other. */
 html[data-route-transition="push-left"]::view-transition-old(segment),
 html[data-route-transition="push-left"]::view-transition-new(segment),
 html[data-route-transition="push-right"]::view-transition-old(segment),
 html[data-route-transition="push-right"]::view-transition-new(segment) {
-    animation-duration: var(--route-transition-push-duration);
+    animation-duration: var(--route-transition-segment-duration);
+    animation-timing-function: var(--route-transition-segment-ease);
     animation-fill-mode: both;
+    mix-blend-mode: normal;
+}
+
+html[data-route-transition="push-left"]::view-transition-image-pair(segment),
+html[data-route-transition="push-right"]::view-transition-image-pair(segment) {
+    isolation: isolate;
+    mix-blend-mode: normal;
+}
+
+/* Full-width travel has to be clipped to the segment's own box, or the
+   outgoing pane slides out across the header and tab bar - the view-transition
+   pseudo tree paints above the page and the group is not clipped by default. */
+html[data-route-transition="push-left"]::view-transition-group(segment),
+html[data-route-transition="push-right"]::view-transition-group(segment) {
+    overflow: hidden;
+}
+
+html[data-route-transition="push-left"]::view-transition-old(segment) {
+    animation-name: route-transition-segment-out-left;
+}
+html[data-route-transition="push-left"]::view-transition-new(segment) {
+    animation-name: route-transition-segment-in-left;
+}
+html[data-route-transition="push-right"]::view-transition-old(segment) {
+    animation-name: route-transition-segment-out-right;
+}
+html[data-route-transition="push-right"]::view-transition-new(segment) {
+    animation-name: route-transition-segment-in-right;
+}
+
+@keyframes route-transition-segment-out-left {
+    from { transform: translateX(0); }
+    to { transform: translateX(-100%); }
+}
+@keyframes route-transition-segment-in-left {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+@keyframes route-transition-segment-out-right {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+}
+@keyframes route-transition-segment-in-right {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
 }
 
 /* iOS: UINavigationController push/pop. The outgoing page never leaves the
    screen on push - it parallax-shifts partway off and dims, as if sliding
    back in the z-dimension under the incoming page; on pop that's reversed. */
-html[data-route-transition-platform="ios"][data-route-transition="push-left"]::view-transition-old(segment) {
-    animation-name: route-transition-ios-push-out-left;
-    animation-timing-function: var(--route-transition-ios-ease);
-}
-html[data-route-transition-platform="ios"][data-route-transition="push-left"]::view-transition-new(segment) {
-    animation-name: route-transition-ios-push-in-left;
-    animation-timing-function: var(--route-transition-ios-ease);
-    z-index: 2;
-}
-html[data-route-transition-platform="ios"][data-route-transition="push-right"]::view-transition-old(segment) {
-    animation-name: route-transition-ios-push-out-right;
-    animation-timing-function: var(--route-transition-ios-ease);
-    z-index: 2;
-}
-html[data-route-transition-platform="ios"][data-route-transition="push-right"]::view-transition-new(segment) {
-    animation-name: route-transition-ios-push-in-right;
-    animation-timing-function: var(--route-transition-ios-ease);
-}
 
 html[data-route-transition-platform="ios"][data-route-transition="push-left"]::view-transition-old(page) {
     animation-name: route-transition-ios-push-out-left;
@@ -298,23 +341,6 @@ html[data-route-transition-platform="ios"][data-route-transition="push-right"]::
 
 /* Material: shared axis (X). Both pages slide the same distance and
    cross-fade symmetrically - no dimming, no parallax. */
-html[data-route-transition-platform="md"][data-route-transition="push-left"]::view-transition-old(segment) {
-    animation-name: route-transition-md-axis-out-left;
-    animation-timing-function: var(--route-transition-md-accelerate);
-}
-html[data-route-transition-platform="md"][data-route-transition="push-left"]::view-transition-new(segment) {
-    animation-name: route-transition-md-axis-in-left;
-    animation-timing-function: var(--route-transition-md-decelerate);
-}
-html[data-route-transition-platform="md"][data-route-transition="push-right"]::view-transition-old(segment) {
-    animation-name: route-transition-md-axis-out-right;
-    animation-timing-function: var(--route-transition-md-accelerate);
-}
-html[data-route-transition-platform="md"][data-route-transition="push-right"]::view-transition-new(segment) {
-    animation-name: route-transition-md-axis-in-right;
-    animation-timing-function: var(--route-transition-md-decelerate);
-}
-
 html[data-route-transition-platform="md"][data-route-transition="push-left"]::view-transition-old(page) {
     animation-name: route-transition-md-axis-out-left;
     animation-timing-function: var(--route-transition-md-accelerate);
