@@ -37,6 +37,7 @@ body {
 .control-panel {
     position: relative;
     z-index: 10;
+    view-transition-name: playground-controls;
     min-height: 100vh;
     padding: clamp(36px, 5vw, 76px);
     display: flex;
@@ -95,15 +96,19 @@ body {
 .device-wrap { position: relative; z-index: 2; display: grid; justify-items: center; gap: 20px; }
 .device {
     position: relative; width: 386px; height: 760px; padding: 9px; border-radius: 52px;
-    background: linear-gradient(145deg, #3d3e49, #15151b 28%, #08090d 80%);
-    border: 1px solid rgba(255,255,255,.18);
+}
+.device-frame {
+    position: absolute; z-index: 0; inset: 0; border-radius: inherit;
+    view-transition-name: playground-device-frame;
+    background: transparent;
+    border: 9px solid #111219;
     box-shadow: 0 45px 120px rgba(0,0,0,.58), inset 0 0 0 1px rgba(255,255,255,.08);
 }
-.device::after { content: ""; position: absolute; inset: 3px; pointer-events: none; border-radius: 48px; border: 1px solid rgba(255,255,255,.08); }
-.device-hardware { position: absolute; z-index: 40; top: 20px; left: 50%; transform: translateX(-50%); width: 106px; height: 27px; border-radius: 20px; background: #06070a; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.device-frame::after { content: ""; position: absolute; inset: -6px; pointer-events: none; border-radius: inherit; border: 1px solid rgba(255,255,255,.14); }
+.device-hardware { position: absolute; z-index: 40; top: 20px; left: 50%; transform: translateX(-50%); width: 106px; height: 27px; border-radius: 20px; view-transition-name: playground-device-hardware; background: #06070a; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .speaker { width: 34px; height: 4px; border-radius: 4px; background: #1e2027; }
 .sensor { width: 7px; height: 7px; border-radius: 50%; background: #121d2b; }
-.device-screen { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 43px; background: #f7f4ef; color: var(--ink); --route-transition-bg: #f7f4ef; }
+.device-screen { position: relative; z-index: 1; width: 100%; height: 100%; overflow: hidden; border-radius: 43px; background: #f7f4ef; color: var(--ink); --route-transition-bg: #f7f4ef; }
 .device-screen > .route-transition-page,
 .device-screen .route-transition-page,
 .device-screen .route-transition-base,
@@ -111,9 +116,27 @@ body {
 .app-page { overflow: hidden; background: #f7f4ef; }
 .app-surface { position: relative; overflow: hidden; padding: 53px 23px 0; background: #f7f4ef; }
 
-.now-showing { display: flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid var(--line); border-radius: 999px; color: #85818d; background: rgba(16,17,25,.7); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; backdrop-filter: blur(12px); }
+.now-showing { view-transition-name: playground-status; display: flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid var(--line); border-radius: 999px; color: #85818d; background: rgba(16,17,25,.7); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; backdrop-filter: blur(12px); }
 .now-showing strong { color: #dcd8e4; font-weight: 600; }
 .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(198,255,101,.08); }
+
+/* The transition library deliberately suppresses the document root while its
+   named route snapshots animate. Keep the demo chrome in named snapshots too,
+   so a route transition inside the phone never blanks the surrounding site. */
+html[data-route-transition]::view-transition-old(playground-controls),
+html[data-route-transition]::view-transition-new(playground-controls),
+html[data-route-transition]::view-transition-old(playground-device-frame),
+html[data-route-transition]::view-transition-new(playground-device-frame),
+html[data-route-transition]::view-transition-old(playground-device-hardware),
+html[data-route-transition]::view-transition-new(playground-device-hardware),
+html[data-route-transition]::view-transition-old(playground-status),
+html[data-route-transition]::view-transition-new(playground-status) {
+    animation: none;
+    opacity: 1;
+    mix-blend-mode: normal;
+}
+html[data-route-transition]::view-transition-group(playground-device-frame) { z-index: 10000; }
+html[data-route-transition]::view-transition-group(playground-device-hardware) { z-index: 10001; }
 
 .phone-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 19px; }
 .phone-header p { margin: 0 0 2px; color: #8b8491; font-size: 8px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
@@ -206,9 +229,9 @@ body {
 .sheet-scene { position: relative; width: 100%; height: 100%; overflow: hidden; }
 .sheet-base { position: absolute; inset: 0; }
 .backdrop-copy { padding: 53px 23px 0; filter: saturate(.75); }
-.sheet-layer { position: absolute; inset: 0; background: transparent !important; }
-.sheet-scrim { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(21,18,27,.42); }
-.queue-sheet { position: absolute; left: 0; right: 0; bottom: 0; min-height: 410px; padding: 11px 23px 25px; border-radius: 28px 28px 0 0; background: #fbf9f5; box-shadow: 0 -18px 65px rgba(30,25,35,.16); }
+.device-screen .route-transition-cover.sheet-layer { position: absolute; left: 0; right: 0; bottom: 0; height: 410px; min-height: 0; background: transparent !important; }
+.sheet-scrim { position: absolute; z-index: 1; inset: 0; width: 100%; border: 0; view-transition-name: playground-sheet-scrim; background: rgba(21,18,27,.42); }
+.queue-sheet { position: relative; z-index: 2; width: 100%; height: 100%; min-height: 410px; padding: 11px 23px 25px; border-radius: 28px 28px 0 0; background: #fbf9f5; box-shadow: 0 -18px 65px rgba(30,25,35,.16); }
 .sheet-handle { width: 38px; height: 4px; margin: 0 auto 19px; border-radius: 4px; background: #d8d2cf; }
 .sheet-title-row { display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px; }
 .sheet-title-row h2 { margin: 3px 0 0; font: 700 20px "Manrope", sans-serif; letter-spacing: -.04em; }
@@ -220,6 +243,23 @@ body {
 .queue-check { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid #d8d1d8; border-radius: 50%; font-size: 9px; }
 .queue-check.selected { border-color: #26212b; background: #26212b; color: white; }
 .sheet-done { width: 100%; margin-top: 18px; padding: 12px; border: 0; border-radius: 12px; background: #211d27; color: white; font-size: 10px; font-weight: 700; }
+
+html[data-route-transition="cover-up"]::view-transition-group(playground-sheet-scrim),
+html[data-route-transition="uncover-down"]::view-transition-group(playground-sheet-scrim) {
+    z-index: 9998;
+}
+html[data-route-transition="cover-up"]::view-transition-new(playground-sheet-scrim),
+html[data-route-transition="uncover-down"]::view-transition-old(playground-sheet-scrim) {
+    mix-blend-mode: normal;
+}
+html[data-route-transition="cover-up"]::view-transition-new(playground-sheet-scrim) {
+    animation: playground-scrim-in 180ms linear both;
+}
+html[data-route-transition="uncover-down"]::view-transition-old(playground-sheet-scrim) {
+    animation: playground-scrim-out 180ms linear both;
+}
+@keyframes playground-scrim-in { from { opacity: 0; } }
+@keyframes playground-scrim-out { to { opacity: 0; } }
 
 .gallery-page { padding-bottom: 25px; }
 .story-card { width: 100%; padding: 0; overflow: hidden; border: 0; border-radius: 25px; background: #171a20; color: white; text-align: left; cursor: pointer; box-shadow: 0 20px 48px rgba(35,32,39,.2); }
@@ -246,7 +286,7 @@ body {
 .dropcap::first-letter { float: left; margin: 1px 5px 0 0; color: #28232d; font-size: 33px; line-height: .75; }
 
 .studio[data-platform="md"] .device { border-radius: 35px; }
-.studio[data-platform="md"] .device::after, .studio[data-platform="md"] .device-screen { border-radius: 27px; }
+.studio[data-platform="md"] .device-frame::after, .studio[data-platform="md"] .device-screen { border-radius: 27px; }
 .studio[data-platform="md"] .device-hardware { width: 13px; height: 13px; top: 19px; padding: 0; }
 .studio[data-platform="md"] .device-hardware .speaker { display: none; }
 .studio[data-platform="md"] .device-hardware .sensor { width: 6px; height: 6px; }
