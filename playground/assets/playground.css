@@ -15,6 +15,11 @@ html, body, #main { width: 100%; min-height: 100%; margin: 0; }
 button, input { font: inherit; }
 button { color: inherit; }
 
+.demo-root {
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+
 body {
     min-width: 320px;
     overflow-x: hidden;
@@ -56,12 +61,7 @@ body {
 .control-group { margin-bottom: 30px; }
 .control-label { display: block; margin-bottom: 11px; color: #777181; font-size: 10px; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; }
 
-.platform-switch {
-    display: grid; grid-template-columns: 1fr 1fr; padding: 4px;
-    background: #151621; border: 1px solid rgba(255,255,255,.08); border-radius: 13px;
-}
-.platform-option { padding: 10px 14px; border: 0; border-radius: 9px; background: transparent; color: #8f8b99; cursor: pointer; font-weight: 600; font-size: 13px; transition: 180ms ease; }
-.platform-option.active { background: #292a38; color: #fff; box-shadow: 0 3px 12px rgba(0,0,0,.25); }
+.motion-switch { width: 100%; }
 .transition-list { display: grid; gap: 2px; }
 .transition-list .control-label { margin-bottom: 8px; }
 .transition-key { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 10px; padding: 7px 3px; font-size: 12px; }

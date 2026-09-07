@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 dioxus = { version = "=0.7.9", features = ["router", "web"] }
 g3-route-transitions = { path = ".." }
+g3-ui = "0.1.0"
 gloo-timers = { version = "0.3", features = ["futures"] }
 manganis = "=0.7.9"
 

@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Spatial page and cover snapshots now clip to the app shell's resolved bounds,
+  so transitions stay inside embedded frames such as the playground phone.
+- The transition runtime now carries the outgoing document and route-surface
+  colors into the document-level snapshot tree. Cover transitions retain the
+  surrounding site's background, and iOS sheet scaling no longer exposes a
+  white backdrop behind dark-mode pages.
+- The route playground now uses the published `g3-ui` shell, theme, and
+  segmented control while continuing to exercise this crate's low-level
+  snapshot markers directly.
 - `replace` now governs history only, not motion. It still yields
   `NavigationAnimation::None` on its own, but a variant that declares both
   `replace` and `push` slides left or right *and* replaces the history entry,

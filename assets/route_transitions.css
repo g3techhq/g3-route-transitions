@@ -26,6 +26,17 @@ body {
     background: var(--route-transition-bg, var(--color-bg, #f8f8f8));
 }
 
+/* Named snapshots live in a document-level pseudo tree, outside any app-shell
+   theme or clipping context. The runtime copies the outgoing document and
+   route-surface colors to <html> before capture so an embedded demo keeps its
+   dark stage and an iOS sheet never reveals a white canvas behind a dark page. */
+html[data-route-transition]::view-transition {
+    background: var(
+        --route-transition-document-bg,
+        var(--route-transition-bg, var(--color-bg, Canvas))
+    );
+}
+
 .route-transition-base {
     view-transition-name: base;
     display: flex;
@@ -92,6 +103,37 @@ html[data-route-transition="push-right"] .route-transition-segment {
 html[data-route-transition="cover-up"]::view-transition-group(cover),
 html[data-route-transition="uncover-down"]::view-transition-group(cover) {
     z-index: 9999;
+}
+
+/* A live ancestor's overflow cannot clip document-level transition images.
+   Clip every spatial snapshot at its captured bounds instead. This keeps page
+   pushes inside an embedded phone and prevents a sheet from painting over the
+   surrounding site while it enters or exits. */
+html[data-route-transition="push-left"]::view-transition-group(page),
+html[data-route-transition="push-right"]::view-transition-group(page),
+html[data-route-transition="cover-up"]::view-transition-group(cover),
+html[data-route-transition="uncover-down"]::view-transition-group(cover),
+html[data-route-transition="cover-up"]::view-transition-group(base),
+html[data-route-transition="uncover-down"]::view-transition-group(base),
+html[data-route-transition="cover-up"]::view-transition-group(page),
+html[data-route-transition="uncover-down"]::view-transition-group(page) {
+    overflow: hidden;
+    border-radius: var(--route-transition-clip-radius, 0px);
+}
+
+/* Scaling the old iOS page exposes the stationary image-pair behind it. Give
+   that pair the resolved app surface color instead of the browser's white
+   default. The cover pair stays transparent so modal scrims keep working. */
+html[data-route-transition="push-left"]::view-transition-image-pair(page),
+html[data-route-transition="push-right"]::view-transition-image-pair(page),
+html[data-route-transition="cover-up"]::view-transition-image-pair(base),
+html[data-route-transition="uncover-down"]::view-transition-image-pair(base),
+html[data-route-transition="cover-up"]::view-transition-image-pair(page),
+html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
+    background: var(
+        --route-transition-surface-bg,
+        var(--route-transition-bg, var(--color-bg, Canvas))
+    );
 }
 
 html[data-route-transition="cover-up"]::view-transition-group(base),

@@ -30,6 +30,11 @@ animates directionally without adding every selection to browser history. The
 controls remain outside the animated viewport so every transition can be
 compared against the same frame.
 
+The playground uses the published `g3-ui` shell, theme, and segmented control,
+while keeping this crate's explicit snapshot markers around the demo routes.
+That dependency is not circular: the playground is a separate binary package;
+the `g3-route-transitions` library itself remains independent of `g3-ui`.
+
 To regenerate the README media while the playground is running on port 8080,
 install the optional capture dependency and run the recording recipe. FFmpeg
 must also be available on `PATH`.
@@ -50,6 +55,11 @@ This crate keeps route animation rules next to your `Routable` enum, then expose
 - `RouteTransitionRoot` wraps the app shell with the provider and cover marker.
 - `RouteTransitionBase`, `RouteTransitionCover`, `RouteTransitionSegment`, and `RouteTransitionPage` mark snapshot regions explicitly.
 - `Platform` (`Ios` / `Md`) plus `set_platform`/`get_platform`/`init_auto_platform` pick which native motion language a transition renders with.
+
+Before each transition, the runtime copies the resolved app-surface color and
+the nearest rounded clipping boundary into the document-level snapshot tree.
+This keeps spatial transitions inside embedded app frames and keeps iOS sheet
+scaling theme-correct in both light and dark mode.
 
 ## iOS vs Material motion
 

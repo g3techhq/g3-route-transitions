@@ -369,6 +369,44 @@ const VIEW_TRANSITION_NAVIGATE: &str = r#"
 const animation = "__DX_ROUTE_TRANSITION_ANIMATION__";
 const platform = "__DX_ROUTE_TRANSITION_PLATFORM__";
 const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+
+// View-transition snapshots are painted in a document-level pseudo tree. They
+// do not inherit a theme that is scoped to an app shell, and they are not
+// clipped by an embedded shell's rounded/overflow-hidden ancestor. Capture the
+// outgoing surface's resolved paint values while it is still in the DOM and
+// publish them on <html>, where the pseudo tree can inherit them.
+const dxRouteTransitionOpaqueBackground = (element) => {
+    if (!element) return null;
+    const color = window.getComputedStyle(element).backgroundColor;
+    return color && color !== "transparent" && color !== "rgba(0, 0, 0, 0)" ? color : null;
+};
+const dxRouteTransitionPaintContext = () => {
+    const root = document.documentElement;
+    const surface = document.querySelector(".route-transition-page, .route-transition-base");
+    const surfaceBackground = dxRouteTransitionOpaqueBackground(surface)
+        ?? dxRouteTransitionOpaqueBackground(document.body)
+        ?? dxRouteTransitionOpaqueBackground(root)
+        ?? "Canvas";
+    const documentBackground = dxRouteTransitionOpaqueBackground(document.body)
+        ?? dxRouteTransitionOpaqueBackground(root)
+        ?? surfaceBackground;
+
+    let clipRadius = "0px";
+    for (let current = surface; current && current !== document.body; current = current.parentElement) {
+        const style = window.getComputedStyle(current);
+        const clips = [style.overflow, style.overflowX, style.overflowY]
+            .some((value) => value === "hidden" || value === "clip");
+        const radius = style.borderTopLeftRadius;
+        if (clips && radius && radius !== "0px") {
+            clipRadius = radius;
+            break;
+        }
+    }
+
+    root.style.setProperty("--route-transition-surface-bg", surfaceBackground);
+    root.style.setProperty("--route-transition-document-bg", documentBackground);
+    root.style.setProperty("--route-transition-clip-radius", clipRadius);
+};
 // Resolves once the router has replaced the page, or after a ceiling if it
 // renders something indistinguishable.
 //
@@ -408,6 +446,7 @@ try {
     } else {
         document.documentElement.dataset.routeTransition = animation;
         document.documentElement.dataset.routeTransitionPlatform = platform;
+        dxRouteTransitionPaintContext();
 
         // The outgoing snapshot is taken synchronously inside
         // startViewTransition, so the attributes set above have to reach
@@ -454,6 +493,9 @@ try {
 } finally {
     delete document.documentElement.dataset.routeTransition;
     delete document.documentElement.dataset.routeTransitionPlatform;
+    document.documentElement.style.removeProperty("--route-transition-surface-bg");
+    document.documentElement.style.removeProperty("--route-transition-document-bg");
+    document.documentElement.style.removeProperty("--route-transition-clip-radius");
 }
 "#;
 async fn run_animated_navigation(animation: NavigationAnimation, mut navigate: impl FnMut()) {
@@ -791,6 +833,54 @@ mod tests {
             "the flush must come after the attributes"
         );
         assert!(flush < capture, "the flush must come before the snapshot");
+    }
+    #[test]
+    fn runtime_exports_the_shell_paint_context_to_the_snapshot_tree() {
+        let script = VIEW_TRANSITION_NAVIGATE;
+        let paint_context = script
+            .find("dxRouteTransitionPaintContext();")
+            .expect("paint context is captured");
+        let capture = script
+            .find("document.startViewTransition(async () =>")
+            .expect("transition is started");
+
+        assert!(
+            paint_context < capture,
+            "paint context must precede capture"
+        );
+        assert!(script.contains(".route-transition-page, .route-transition-base"));
+        assert!(script.contains("--route-transition-surface-bg"));
+        assert!(script.contains("--route-transition-document-bg"));
+        assert!(script.contains("--route-transition-clip-radius"));
+        assert!(script.contains("style.removeProperty(\"--route-transition-surface-bg\")"));
+    }
+    #[test]
+    fn spatial_snapshot_groups_clip_to_embedded_shells() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+
+        for selector in [
+            "[data-route-transition=\"push-left\"]::view-transition-group(page)",
+            "[data-route-transition=\"push-right\"]::view-transition-group(page)",
+            "[data-route-transition=\"cover-up\"]::view-transition-group(cover)",
+            "[data-route-transition=\"uncover-down\"]::view-transition-group(cover)",
+        ] {
+            assert!(stylesheet.contains(selector), "missing {selector}");
+        }
+        assert!(stylesheet.contains("overflow: hidden;"));
+        assert!(stylesheet.contains("border-radius: var(--route-transition-clip-radius, 0px)"));
+    }
+    #[test]
+    fn sheet_backdrop_uses_the_resolved_theme_surface() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+
+        assert!(stylesheet.contains("--route-transition-document-bg"));
+        assert!(stylesheet.contains("--route-transition-surface-bg"));
+        assert!(stylesheet.contains(
+            "[data-route-transition=\"cover-up\"]::view-transition-image-pair(page)",
+        ));
+        assert!(stylesheet.contains(
+            "[data-route-transition=\"uncover-down\"]::view-transition-image-pair(base)",
+        ));
     }
     #[test]
     fn view_transition_update_waits_for_native_route_commit_without_blocking_on_raf() {
