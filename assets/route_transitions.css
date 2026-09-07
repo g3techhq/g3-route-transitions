@@ -111,14 +111,23 @@ html[data-route-transition="uncover-down"]::view-transition-group(cover) {
    surrounding site while it enters or exits. */
 html[data-route-transition="push-left"]::view-transition-group(page),
 html[data-route-transition="push-right"]::view-transition-group(page),
+html[data-route-transition="push-left"]::view-transition-image-pair(page),
+html[data-route-transition="push-right"]::view-transition-image-pair(page),
 html[data-route-transition="cover-up"]::view-transition-group(cover),
 html[data-route-transition="uncover-down"]::view-transition-group(cover),
+html[data-route-transition="cover-up"]::view-transition-image-pair(cover),
+html[data-route-transition="uncover-down"]::view-transition-image-pair(cover),
 html[data-route-transition="cover-up"]::view-transition-group(base),
 html[data-route-transition="uncover-down"]::view-transition-group(base),
+html[data-route-transition="cover-up"]::view-transition-image-pair(base),
+html[data-route-transition="uncover-down"]::view-transition-image-pair(base),
 html[data-route-transition="cover-up"]::view-transition-group(page),
-html[data-route-transition="uncover-down"]::view-transition-group(page) {
+html[data-route-transition="uncover-down"]::view-transition-group(page),
+html[data-route-transition="cover-up"]::view-transition-image-pair(page),
+html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
     overflow: hidden;
     border-radius: var(--route-transition-clip-radius, 0px);
+    clip-path: inset(0 round var(--route-transition-clip-radius, 0px));
 }
 
 /* Scaling the old iOS page exposes the stationary image-pair behind it. Give
@@ -137,7 +146,10 @@ html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
 }
 
 html[data-route-transition="cover-up"]::view-transition-group(base),
-html[data-route-transition="uncover-down"]::view-transition-group(base),
+html[data-route-transition="uncover-down"]::view-transition-group(base) {
+    z-index: 0;
+}
+
 html[data-route-transition="cover-up"]::view-transition-group(page),
 html[data-route-transition="uncover-down"]::view-transition-group(page) {
     z-index: 1;
@@ -313,8 +325,11 @@ html[data-route-transition="push-right"]::view-transition-image-pair(segment) {
    outgoing pane slides out across the header and tab bar - the view-transition
    pseudo tree paints above the page and the group is not clipped by default. */
 html[data-route-transition="push-left"]::view-transition-group(segment),
-html[data-route-transition="push-right"]::view-transition-group(segment) {
+html[data-route-transition="push-right"]::view-transition-group(segment),
+html[data-route-transition="push-left"]::view-transition-image-pair(segment),
+html[data-route-transition="push-right"]::view-transition-image-pair(segment) {
     overflow: hidden;
+    clip-path: inset(0);
 }
 
 html[data-route-transition="push-left"]::view-transition-old(segment) {

@@ -781,6 +781,23 @@ mod tests {
         assert!(stylesheet.contains("z-index: 1"));
     }
     #[test]
+    fn hidden_base_pair_cannot_cover_a_full_page_snapshot() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+        let base_group = stylesheet
+            .split("html[data-route-transition=\"cover-up\"]::view-transition-group(base),")
+            .nth(2)
+            .and_then(|block| block.split('}').next())
+            .expect("missing cover base stacking rule");
+        let page_group = stylesheet
+            .split("html[data-route-transition=\"cover-up\"]::view-transition-group(page),")
+            .nth(2)
+            .and_then(|block| block.split('}').next())
+            .expect("missing cover page stacking rule");
+
+        assert!(base_group.contains("z-index: 0"));
+        assert!(page_group.contains("z-index: 1"));
+    }
+    #[test]
     fn snapshot_marker_components_are_public_contract() {
         let source = include_str!("lib.rs");
         let production_source = source
@@ -861,13 +878,21 @@ mod tests {
         for selector in [
             "[data-route-transition=\"push-left\"]::view-transition-group(page)",
             "[data-route-transition=\"push-right\"]::view-transition-group(page)",
+            "[data-route-transition=\"push-left\"]::view-transition-image-pair(page)",
+            "[data-route-transition=\"push-right\"]::view-transition-image-pair(page)",
             "[data-route-transition=\"cover-up\"]::view-transition-group(cover)",
             "[data-route-transition=\"uncover-down\"]::view-transition-group(cover)",
+            "[data-route-transition=\"cover-up\"]::view-transition-image-pair(cover)",
+            "[data-route-transition=\"uncover-down\"]::view-transition-image-pair(cover)",
         ] {
             assert!(stylesheet.contains(selector), "missing {selector}");
         }
         assert!(stylesheet.contains("overflow: hidden;"));
         assert!(stylesheet.contains("border-radius: var(--route-transition-clip-radius, 0px)"));
+        assert!(
+            stylesheet
+                .contains("clip-path: inset(0 round var(--route-transition-clip-radius, 0px))",)
+        );
     }
     #[test]
     fn sheet_backdrop_uses_the_resolved_theme_surface() {
@@ -1083,6 +1108,8 @@ mod tests {
 
         // Full-width travel has to be clipped to the segment's own box.
         assert!(stylesheet.contains("::view-transition-group(segment)"));
+        assert!(stylesheet.contains("::view-transition-image-pair(segment)"));
+        assert!(stylesheet.contains("clip-path: inset(0)"));
     }
     #[test]
     fn fade_transitions_are_the_same_fast_cross_dissolve_on_both_platforms() {

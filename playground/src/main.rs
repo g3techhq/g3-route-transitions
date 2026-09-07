@@ -171,6 +171,7 @@ fn DemoShell() -> Element {
                     div { class: "stage-glow stage-glow-two" }
                     div { class: "device-wrap",
                         div { class: "device",
+                            div { class: "device-frame" }
                             div { class: "device-hardware",
                                 span { class: "sensor" }
                                 span { class: "speaker" }
@@ -371,12 +372,12 @@ fn QueueSheet() -> Element {
             RouteTransitionBase { class: "sheet-base".to_string(),
                 HomeBackdrop {}
             }
+            button {
+                class: "sheet-scrim",
+                aria_label: "Close queue sheet",
+                onclick: move |_| async move { animated_navigate(Route::Home {}).await },
+            }
             RouteTransitionCover { class: "sheet-layer".to_string(),
-                button {
-                    class: "sheet-scrim",
-                    aria_label: "Close queue sheet",
-                    onclick: move |_| async move { animated_navigate(Route::Home {}).await },
-                }
                 section { class: "queue-sheet",
                     div { class: "sheet-handle" }
                     div { class: "sheet-title-row",
