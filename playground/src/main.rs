@@ -4,6 +4,7 @@ use g3_route_transitions::{
     RouteTransitionProvider, RouteTransitionSegment, animated_navigate, route_transitions,
     set_platform,
 };
+use g3_ui::{AppWrapper, ComponentMode, SegmentButton, SegmentGroup, Theme};
 use gloo_timers::future::TimeoutFuture;
 use manganis::{AssetOptions, asset};
 
@@ -67,10 +68,19 @@ fn App() -> Element {
 
 #[component]
 fn DemoShell() -> Element {
-    let mut platform = use_signal(|| Platform::Ios);
+    let platform_choice = use_signal(|| 0_usize);
     let mut playing = use_signal(|| false);
     let current_route: Route = use_route();
-    set_platform(platform());
+    let platform = if platform_choice() == 0 {
+        Platform::Ios
+    } else {
+        Platform::Md
+    };
+    let mode = match platform {
+        Platform::Ios => ComponentMode::Ios,
+        Platform::Md => ComponentMode::Md,
+    };
+    set_platform(platform);
 
     let play_all = move |_| {
         if playing() {
@@ -108,78 +118,74 @@ fn DemoShell() -> Element {
     };
 
     rsx! {
-        div {
-            class: "studio",
-            "data-platform": platform().data_value(),
-            aside { class: "control-panel",
-                div { class: "brand-lockup",
-                    div { class: "brand-mark", "g3" }
-                    div {
-                        p { class: "eyebrow", "Dioxus motion toolkit" }
-                        h1 { "Route transitions" }
-                    }
-                }
-                p { class: "intro",
-                    "Route-owned navigation that feels native on the web, iOS, and Android."
-                }
-
-                div { class: "control-group",
-                    span { class: "control-label", "Motion language" }
-                    div { class: "platform-switch", role: "group", aria_label: "Motion language",
-                        button {
-                            class: if platform() == Platform::Ios { "platform-option active" } else { "platform-option" },
-                            aria_pressed: platform() == Platform::Ios,
-                            onclick: move |_| platform.set(Platform::Ios),
-                            "iOS"
-                        }
-                        button {
-                            class: if platform() == Platform::Md { "platform-option active" } else { "platform-option" },
-                            aria_pressed: platform() == Platform::Md,
-                            onclick: move |_| platform.set(Platform::Md),
-                            "Material"
+        AppWrapper {
+            layout: false,
+            class: "demo-root",
+            mode,
+            theme: Theme::default_dark().with_focused("#c6ff65"),
+            div {
+                class: "studio",
+                "data-platform": platform.data_value(),
+                aside { class: "control-panel",
+                    div { class: "brand-lockup",
+                        div { class: "brand-mark", "g3" }
+                        div {
+                            p { class: "eyebrow", "Dioxus motion toolkit" }
+                            h1 { "Route transitions" }
                         }
                     }
-                }
+                    p { class: "intro",
+                        "Route-owned navigation that feels native on the web, iOS, and Android."
+                    }
 
-                div { class: "control-group transition-list",
-                    span { class: "control-label", "Transitions in this tour" }
-                    TransitionKey { swatch: "violet", title: "Push / pop", detail: "Hierarchy" }
-                    TransitionKey { swatch: "coral", title: "Cover / uncover", detail: "Sheet" }
-                    TransitionKey { swatch: "aqua", title: "Cross-fade", detail: "Peers" }
-                    TransitionKey { swatch: "pink", title: "Segment swipe", detail: "Tabs" }
-                    TransitionKey { swatch: "lime", title: "Morph", detail: "Card detail" }
-                }
-
-                button {
-                    class: "play-all",
-                    disabled: playing(),
-                    aria_label: "Play every route transition",
-                    onclick: play_all,
-                    span { class: "play-icon", aria_hidden: "true", if playing() { "•••" } else { "▶" } }
-                    if playing() { "Playing tour" } else { "Play all" }
-                }
-                p { class: "hint", "Tip: record at 1440 × 900 for a clean GitHub preview." }
-            }
-
-            main { class: "stage",
-                div { class: "stage-glow stage-glow-one" }
-                div { class: "stage-glow stage-glow-two" }
-                div { class: "device-wrap",
-                    div { class: "device",
-                        div { class: "device-hardware",
-                            span { class: "sensor" }
-                            span { class: "speaker" }
+                    div { class: "control-group",
+                        span { class: "control-label", "Motion language" }
+                        SegmentGroup { active: platform_choice, class: "motion-switch", mode,
+                            SegmentButton { index: 0, mode, "iOS" }
+                            SegmentButton { index: 1, mode, "Material" }
                         }
-                        div { class: "device-screen",
-                            RouteTransitionProvider {
-                                Outlet::<Route> {}
+                    }
+
+                    div { class: "control-group transition-list",
+                        span { class: "control-label", "Transitions in this tour" }
+                        TransitionKey { swatch: "violet", title: "Push / pop", detail: "Hierarchy" }
+                        TransitionKey { swatch: "coral", title: "Cover / uncover", detail: "Sheet" }
+                        TransitionKey { swatch: "aqua", title: "Cross-fade", detail: "Peers" }
+                        TransitionKey { swatch: "pink", title: "Segment swipe", detail: "Tabs" }
+                        TransitionKey { swatch: "lime", title: "Morph", detail: "Card detail" }
+                    }
+
+                    button {
+                        class: "play-all",
+                        disabled: playing(),
+                        aria_label: "Play every route transition",
+                        onclick: play_all,
+                        span { class: "play-icon", aria_hidden: "true", if playing() { "•••" } else { "▶" } }
+                        if playing() { "Playing tour" } else { "Play all" }
+                    }
+                    p { class: "hint", "Tip: record at 1440 × 900 for a clean GitHub preview." }
+                }
+
+                main { class: "stage",
+                    div { class: "stage-glow stage-glow-one" }
+                    div { class: "stage-glow stage-glow-two" }
+                    div { class: "device-wrap",
+                        div { class: "device",
+                            div { class: "device-hardware",
+                                span { class: "sensor" }
+                                span { class: "speaker" }
+                            }
+                            div { class: "device-screen",
+                                RouteTransitionProvider {
+                                    Outlet::<Route> {}
+                                }
                             }
                         }
-                    }
-                    div { class: "now-showing",
-                        span { class: "live-dot" }
-                        span { "Now showing" }
-                        strong { "{transition_name(&current_route)}" }
+                        div { class: "now-showing",
+                            span { class: "live-dot" }
+                            span { "Now showing" }
+                            strong { "{transition_name(&current_route)}" }
+                        }
                     }
                 }
             }
