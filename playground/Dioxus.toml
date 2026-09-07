@@ -1,0 +1,18 @@
+[application]
+name = "g3-route-transitions-playground"
+default_platform = "web"
+out_dir = "dist"
+
+[web.app]
+title = "g3 route transitions playground"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "assets", "../src", "../assets"]
+
+[web.resource]
+style = []
+script = []
+
+[web.resource.dev]
+script = []
