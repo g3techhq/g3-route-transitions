@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 use g3_route_transitions::{
     Platform, RouteTransitionBase, RouteTransitionCover, RouteTransitionPage,
-    RouteTransitionProvider, animated_navigate, route_transitions, set_platform,
+    RouteTransitionProvider, RouteTransitionSegment, animated_navigate, route_transitions,
+    set_platform,
 };
 use gloo_timers::future::TimeoutFuture;
 use manganis::{AssetOptions, asset};
@@ -24,6 +25,10 @@ enum Route {
         #[transition(root)]
         #[route("/discover")]
         Discover {},
+
+        #[transition(base, replace, push(group = media_tabs, order = tab))]
+        #[route("/ratings/:tab")]
+        RatingsTabs { tab: u8 },
 
         #[transition(pushed)]
         #[route("/detail")]
@@ -85,6 +90,14 @@ fn DemoShell() -> Element {
             pause(420).await;
             animated_navigate(Route::Discover {}).await;
             pause(420).await;
+            animated_navigate(Route::RatingsTabs { tab: 0 }).await;
+            pause(320).await;
+            animated_navigate(Route::RatingsTabs { tab: 1 }).await;
+            pause(320).await;
+            animated_navigate(Route::RatingsTabs { tab: 2 }).await;
+            pause(320).await;
+            animated_navigate(Route::RatingsTabs { tab: 0 }).await;
+            pause(420).await;
             animated_navigate(Route::Gallery {}).await;
             pause(420).await;
             animated_navigate(Route::Story {}).await;
@@ -133,6 +146,7 @@ fn DemoShell() -> Element {
                     TransitionKey { swatch: "violet", title: "Push / pop", detail: "Hierarchy" }
                     TransitionKey { swatch: "coral", title: "Cover / uncover", detail: "Sheet" }
                     TransitionKey { swatch: "aqua", title: "Cross-fade", detail: "Peers" }
+                    TransitionKey { swatch: "pink", title: "Segment swipe", detail: "Tabs" }
                     TransitionKey { swatch: "lime", title: "Morph", detail: "Card detail" }
                 }
 
@@ -256,6 +270,55 @@ fn Discover() -> Element {
                 }
                 BottomNav { active: "discover" }
             }
+        }
+    }
+}
+
+#[component]
+fn RatingsTabs(tab: u8) -> Element {
+    rsx! {
+        RouteTransitionBase { class: "app-surface ratings-page".to_string(),
+            PhoneHeader { eyebrow: "YOUR TASTE PROFILE", title: "Ratings" }
+            div { class: "segment-control", role: "tablist", aria_label: "Media type",
+                SegmentTab { label: "Movies", index: 0, active: tab == 0 }
+                SegmentTab { label: "Shows", index: 1, active: tab == 1 }
+                SegmentTab { label: "Books", index: 2, active: tab == 2 }
+            }
+            RouteTransitionSegment { class: "ratings-segment".to_string(),
+                {match tab {
+                    1 => rsx! {
+                        div { class: "rating-summary coral-summary",
+                            span { "SHOWS" }
+                            strong { "8.4" }
+                            small { "average from 31 ratings" }
+                        }
+                        RatingRow { position: "01", title: "Signal Fires", meta: "Limited series", score: "9.4", tone: "coral" }
+                        RatingRow { position: "02", title: "The Long Room", meta: "3 seasons", score: "8.8", tone: "violet" }
+                        RatingRow { position: "03", title: "Night Index", meta: "2 seasons", score: "8.1", tone: "blue" }
+                    },
+                    2 => rsx! {
+                        div { class: "rating-summary blue-summary",
+                            span { "BOOKS" }
+                            strong { "8.7" }
+                            small { "average from 46 ratings" }
+                        }
+                        RatingRow { position: "01", title: "Orbital Lines", meta: "N. Sato", score: "9.6", tone: "blue" }
+                        RatingRow { position: "02", title: "A Small Horizon", meta: "I. Mercer", score: "9.0", tone: "gold" }
+                        RatingRow { position: "03", title: "The Field Atlas", meta: "J. Vale", score: "8.7", tone: "green" }
+                    },
+                    _ => rsx! {
+                        div { class: "rating-summary violet-summary",
+                            span { "MOVIES" }
+                            strong { "8.9" }
+                            small { "average from 84 ratings" }
+                        }
+                        RatingRow { position: "01", title: "The Quiet Orbit", meta: "2026 · Sci-fi", score: "9.8", tone: "violet" }
+                        RatingRow { position: "02", title: "Afterglow", meta: "2026 · Drama", score: "9.2", tone: "rose" }
+                        RatingRow { position: "03", title: "Blue Static", meta: "2025 · Mystery", score: "8.9", tone: "aqua" }
+                    },
+                }}
+            }
+            BottomNav { active: "ratings" }
         }
     }
 }
@@ -451,6 +514,40 @@ fn QueueItem(
 }
 
 #[component]
+fn SegmentTab(label: &'static str, index: u8, active: bool) -> Element {
+    rsx! {
+        button {
+            class: if active { "segment-tab active" } else { "segment-tab" },
+            role: "tab",
+            aria_selected: active,
+            onclick: move |_| async move { animated_navigate(Route::RatingsTabs { tab: index }).await },
+            "{label}"
+        }
+    }
+}
+
+#[component]
+fn RatingRow(
+    position: &'static str,
+    title: &'static str,
+    meta: &'static str,
+    score: &'static str,
+    tone: &'static str,
+) -> Element {
+    rsx! {
+        article { class: "rating-row",
+            span { class: "rating-position", "{position}" }
+            div { class: "rating-cover {tone}" }
+            div { class: "rating-copy",
+                strong { "{title}" }
+                small { "{meta}" }
+            }
+            span { class: "rating-score", "{score}" }
+        }
+    }
+}
+
+#[component]
 fn BottomNav(active: &'static str) -> Element {
     rsx! {
         nav { class: "bottom-nav",
@@ -465,6 +562,12 @@ fn BottomNav(active: &'static str) -> Element {
                 onclick: move |_| async move { animated_navigate(Route::Discover {}).await },
                 span { "◇" }
                 small { "Discover" }
+            }
+            button {
+                class: if active == "ratings" { "nav-item active" } else { "nav-item" },
+                onclick: move |_| async move { animated_navigate(Route::RatingsTabs { tab: 0 }).await },
+                span { "☆" }
+                small { "Ratings" }
             }
             button {
                 class: "nav-item",
@@ -499,6 +602,7 @@ fn transition_name(route: &Route) -> &'static str {
     match route {
         Route::Home {} => "Ready",
         Route::Discover {} => "Cross-fade",
+        Route::RatingsTabs { .. } => "Segment swipe",
         Route::Detail {} => "Push",
         Route::QueueSheet {} => "Sheet",
         Route::Gallery {} => "Base route",

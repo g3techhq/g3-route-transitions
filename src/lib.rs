@@ -70,9 +70,17 @@
 //!   reached by drilling further into the hierarchy. The forward direction
 //!   pushes left and the reverse direction pushes right.
 //! - `replace` marks changes within the same route variant as in-place updates.
-//!   [`animated_navigate`] uses router replacement and skips the page transition,
-//!   so query-backed filters do not fill browser history. `replace(key = id)`
+//!   [`animated_navigate`] uses router replacement rather than a push, so
+//!   query-backed filters do not fill browser history. `replace(key = id)`
 //!   limits that behavior to matching logical records.
+//!
+//!   `replace` decides how history is written, not how the route animates.
+//!   Declared on its own it also yields [`NavigationAnimation::None`], which
+//!   suits a filter that swaps content in place. Declared alongside `push` the
+//!   ordering still wins, so the route slides left or right *and* replaces the
+//!   history entry - the combination a segmented control wants, where the tab
+//!   body tracks the finger but Back leaves the screen instead of retracing
+//!   every tab the user touched.
 //! - If two routes are not equivalent, not a cover/uncover pair, and not matching push peers, the
 //!   generated method returns [`NavigationAnimation::Fade`].
 //!
@@ -905,6 +913,86 @@ mod tests {
         assert!(stylesheet.contains("translateX(-30%); filter: brightness(0.85)"));
         assert!(stylesheet.contains("route-transition-md-axis-out-left"));
         assert!(stylesheet.contains("route-transition-md-axis-in-left"));
+    }
+
+    /// A segment push is a filmstrip, not a page push. The two tab bodies are
+    /// neighbouring frames of one strip: they travel the full width on one
+    /// shared curve, so the gap between them stays exactly one pane wide for
+    /// the whole transition and neither can appear on top of the other. The
+    /// platform-specific parallax and shared-axis pairs stay on `page`, where
+    /// one surface really is moving over another.
+    #[test]
+    fn segment_pushes_slide_as_one_filmstrip_rather_than_a_page_push() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+
+        assert!(stylesheet.contains("route-transition-segment-out-left"));
+        assert!(stylesheet.contains("route-transition-segment-in-left"));
+        assert!(stylesheet.contains("route-transition-segment-out-right"));
+        assert!(stylesheet.contains("route-transition-segment-in-right"));
+
+        // Keyframe bodies contain nested braces, so the block ends at the first
+        // closing brace in column zero rather than the first one seen.
+        let keyframe_block = |name: &str| {
+            stylesheet
+                .split(&format!("@keyframes {name} {{"))
+                .nth(1)
+                .and_then(|block| block.split("\n}").next())
+                .unwrap_or_else(|| panic!("missing @keyframes {name}"))
+                .to_string()
+        };
+
+        // Full-width travel in both directions, so the outgoing pane clears the
+        // box exactly as the incoming one lands. A partial offset (the 30% a
+        // page push uses) leaves the two panes overlapping mid-transition.
+        for (name, from, to) in [
+            (
+                "route-transition-segment-out-left",
+                "translateX(0)",
+                "translateX(-100%)",
+            ),
+            (
+                "route-transition-segment-in-left",
+                "translateX(100%)",
+                "translateX(0)",
+            ),
+            (
+                "route-transition-segment-out-right",
+                "translateX(0)",
+                "translateX(100%)",
+            ),
+            (
+                "route-transition-segment-in-right",
+                "translateX(-100%)",
+                "translateX(0)",
+            ),
+        ] {
+            let block = keyframe_block(name);
+            assert!(block.contains(from), "{name} should start at {from}");
+            assert!(block.contains(to), "{name} should end at {to}");
+            // No cross-fade: a filmstrip never dims or dissolves between frames.
+            assert!(!block.contains("opacity"), "{name} should not fade");
+            assert!(!block.contains("brightness"), "{name} should not dim");
+        }
+
+        // One shared curve for both panes, rather than the accelerate /
+        // decelerate pair that makes a page push read as two separate moves.
+        assert!(stylesheet.contains("--route-transition-segment-ease"));
+        assert!(!stylesheet.contains(
+            "\"md\"][data-route-transition=\"push-left\"]::view-transition-old(segment)"
+        ));
+
+        // The user agent gives view-transition images `plus-lighter` for smooth
+        // cross-fades; two opaque panes sliding across each other must
+        // composite normally or the overlap ghosts.
+        let segment_images = stylesheet
+            .split("::view-transition-new(segment) {")
+            .nth(1)
+            .and_then(|block| block.split('}').next())
+            .expect("missing segment image rule");
+        assert!(segment_images.contains("mix-blend-mode: normal"));
+
+        // Full-width travel has to be clipped to the segment's own box.
+        assert!(stylesheet.contains("::view-transition-group(segment)"));
     }
     #[test]
     fn fade_transitions_are_the_same_fast_cross_dissolve_on_both_platforms() {

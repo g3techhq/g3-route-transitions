@@ -26,7 +26,7 @@ async function main() {
     let frame = 0;
     const startedAt = Date.now();
     const capture = (async () => {
-        while (Date.now() - startedAt < 9_000) {
+        while (Date.now() - startedAt < 12_000) {
             await page.screenshot({
                 path: path.join(captureDirectory, `frame-${String(frame).padStart(4, "0")}.png`),
             });

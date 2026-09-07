@@ -69,6 +69,7 @@ body {
 .key-swatch.violet { background: #a98aff; }
 .key-swatch.coral { background: #ff8370; }
 .key-swatch.aqua { background: #65e8e1; }
+.key-swatch.pink { background: #ff8fc8; }
 .key-swatch.lime { background: var(--accent); }
 .key-title { color: #dedbe5; font-weight: 600; }
 .key-detail { color: #6f6b79; }
@@ -139,7 +140,7 @@ body {
 .poster-art { height: 104px; display: flex; align-items: end; padding: 10px; overflow: hidden; border-radius: 16px; color: white; font: 600 10px "Manrope", sans-serif; }
 .poster-art.sunset { background: radial-gradient(circle at 76% 24%, #ffdc91 0 10%, transparent 11%), linear-gradient(155deg, #e27b82, #402a58 68%); }
 .poster-art.ocean { background: radial-gradient(circle at 26% 62%, rgba(143,247,255,.7), transparent 17%), linear-gradient(155deg, #173d58, #6ca6b3); }
-.bottom-nav { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; height: 72px; display: grid; grid-template-columns: repeat(3, 1fr); padding: 8px 50px 12px; background: rgba(250,248,244,.94); border-top: 1px solid #ebe7e1; backdrop-filter: blur(12px); }
+.bottom-nav { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; height: 72px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 8px 31px 12px; background: rgba(250,248,244,.94); border-top: 1px solid #ebe7e1; backdrop-filter: blur(12px); }
 .nav-item { display: grid; place-items: center; align-content: center; gap: 2px; border: 0; background: transparent; color: #aaa3ad; cursor: pointer; }
 .nav-item span { font-size: 17px; line-height: 1; }
 .nav-item small { font-size: 7px; font-weight: 700; }
@@ -159,6 +160,33 @@ body {
 .discover-card.blue { background: linear-gradient(145deg, #1c3750, #6a9ebe); }
 .discover-card h3 { margin: 3px 0; font: 700 14px/1.05 "Manrope", sans-serif; letter-spacing: -.035em; }
 .discover-card p, .card-number { margin: 0; font-size: 6px; letter-spacing: .12em; opacity: .72; }
+
+.ratings-page { padding-bottom: 72px; }
+.segment-control { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin: 2px 0 18px; padding: 4px; border-radius: 14px; background: #e9e5df; }
+.segment-tab { position: relative; z-index: 1; padding: 9px 4px; border: 0; border-radius: 10px; background: transparent; color: #918a94; cursor: pointer; font-size: 9px; font-weight: 700; transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease; }
+.segment-tab.active { background: #fffdfa; color: #28232c; box-shadow: 0 3px 11px rgba(52,45,56,.1); }
+.ratings-segment { flex: 1; overflow: hidden; padding-bottom: 12px; background: #f7f4ef; }
+.rating-summary { height: 142px; display: grid; align-content: end; margin-bottom: 10px; padding: 19px; border-radius: 22px; color: white; overflow: hidden; }
+.rating-summary.violet-summary { background: radial-gradient(circle at 82% 18%, rgba(220,174,255,.65), transparent 22%), linear-gradient(145deg, #2a203b, #74528f); }
+.rating-summary.coral-summary { background: radial-gradient(circle at 82% 18%, rgba(255,215,157,.7), transparent 22%), linear-gradient(145deg, #44262c, #c96d63); }
+.rating-summary.blue-summary { background: radial-gradient(circle at 82% 18%, rgba(134,239,245,.62), transparent 22%), linear-gradient(145deg, #183244, #4e8da2); }
+.rating-summary span { font-size: 7px; font-weight: 700; letter-spacing: .15em; opacity: .7; }
+.rating-summary strong { margin-top: 3px; font: 700 35px/.95 "Manrope", sans-serif; letter-spacing: -.06em; }
+.rating-summary small { margin-top: 3px; font-size: 8px; opacity: .72; }
+.rating-row { display: grid; grid-template-columns: 20px 42px 1fr auto; align-items: center; gap: 10px; min-height: 61px; border-bottom: 1px solid #e9e4df; }
+.rating-position { color: #aaa2ab; font: 600 8px "Manrope", sans-serif; }
+.rating-cover { width: 36px; height: 44px; border-radius: 8px; box-shadow: 0 5px 12px rgba(40,33,44,.12); }
+.rating-cover.violet { background: linear-gradient(145deg, #d49af1, #3b2750); }
+.rating-cover.rose { background: linear-gradient(145deg, #f2adab, #6e354c); }
+.rating-cover.aqua { background: linear-gradient(145deg, #90e7e2, #24546b); }
+.rating-cover.coral { background: linear-gradient(145deg, #ffc18d, #8b3940); }
+.rating-cover.blue { background: linear-gradient(145deg, #9dc8ed, #344d75); }
+.rating-cover.gold { background: linear-gradient(145deg, #efd28c, #755831); }
+.rating-cover.green { background: linear-gradient(145deg, #9ad5aa, #315942); }
+.rating-copy { display: grid; gap: 2px; min-width: 0; }
+.rating-copy strong { overflow: hidden; font: 700 10px "Manrope", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.rating-copy small { color: #99919a; font-size: 8px; }
+.rating-score { min-width: 34px; padding: 6px 7px; border-radius: 9px; background: #22202a; color: white; text-align: center; font-size: 9px; font-weight: 700; }
 
 .detail-page { padding: 0; }
 .detail-art { position: relative; height: 370px; overflow: hidden; background: radial-gradient(circle at 52% 40%, #d5acdf, #684f82 32%, #1c1b2d 66%); }

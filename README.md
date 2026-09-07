@@ -24,9 +24,11 @@ dx serve
 ```
 
 The sequence covers push and pop, sheet presentation and dismissal, peer-route
-fade, and container morph in both platform styles. The controls remain outside
-the animated viewport so every transition can be compared against the same
-frame.
+fade, segmented-tab filmstrip motion, and container morph in both platform
+styles. The tab demo also combines `push` with `replace`, so changing tabs
+animates directionally without adding every selection to browser history. The
+controls remain outside the animated viewport so every transition can be
+compared against the same frame.
 
 To regenerate the README media while the playground is running on port 8080,
 install the optional capture dependency and run the recording recipe. FFmpeg

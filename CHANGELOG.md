@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `replace` now governs history only, not motion. It still yields
+  `NavigationAnimation::None` on its own, but a variant that declares both
+  `replace` and `push` slides left or right *and* replaces the history entry,
+  instead of the replace short-circuit discarding the push ordering. This is
+  what a segmented control needs: the body tracks the selected tab while Back
+  leaves the screen rather than retracing every tab the user touched. Routes
+  declaring `replace` without `push` are unaffected.
+
 ## [0.1.0] - 2026-09-06
 
 Initial release.
