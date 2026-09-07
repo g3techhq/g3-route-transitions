@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The executable transition showcase now lives in the `g3-ui` playground, so
+  every recorded transition uses the real component library instead of a
+  second set of standalone demo components.
 - Spatial page and cover snapshots now clip to the app shell's resolved bounds,
   so transitions stay inside embedded frames such as the playground phone.
 - The transition runtime now carries the outgoing document and route-surface
