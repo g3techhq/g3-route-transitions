@@ -79,14 +79,14 @@ Call `set_platform(Platform::Ios)` / `set_platform(Platform::Md)` once at startu
 ```toml
 [dependencies]
 dioxus = { version = "0.7.9", features = ["router"] }
-g3-route-transitions = "0.1"
+g3-route-transitions = "0.2"
 ```
 
 For automatic Android system Back integration, enable `native-back`:
 
 ```toml
 [dependencies]
-g3-route-transitions = { version = "0.1", features = ["native-back"] }
+g3-route-transitions = { version = "0.2", features = ["native-back"] }
 ```
 
 The Rust crate name is `g3_route_transitions`:

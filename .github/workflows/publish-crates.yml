@@ -56,6 +56,20 @@ jobs:
             exit 1
           fi
 
+          MACROS_VERSION="$(cargo metadata --no-deps --manifest-path macros/Cargo.toml --format-version 1 | jq -r '.packages[0].version')"
           cargo publish --manifest-path macros/Cargo.toml
-          sleep 30
+
+          for attempt in {1..30}; do
+            if cargo info "g3-route-transitions-macros@${MACROS_VERSION}" >/dev/null 2>&1; then
+              break
+            fi
+
+            if [[ "${attempt}" == "30" ]]; then
+              echo "g3-route-transitions-macros ${MACROS_VERSION} did not reach the crates.io index in time" >&2
+              exit 1
+            fi
+
+            sleep 10
+          done
+
           cargo publish
