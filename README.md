@@ -7,20 +7,18 @@
 
 Route-owned View Transition helpers for Dioxus Router.
 
-## Transition showcase
+<p align="center">
+  <a href="https://github.com/g3techhq/g3-ui/raw/main/docs/media/route-transitions-demo.mp4">
+    <img
+      src="https://raw.githubusercontent.com/g3techhq/g3-ui/main/docs/media/route-transitions-demo.webp"
+      alt="g3-route-transitions running inside the g3-ui mobile device frame"
+      width="390"
+    >
+  </a>
+</p>
 
-The canonical interactive showcase now lives in the
-[`g3-ui` playground](https://github.com/g3techhq/g3-ui/tree/main/playground),
-where every transition runs inside the real components it is designed to
-support. Its shareable `/transitions` routes cover push and pop, sheet
-presentation and dismissal, peer-route fade, segmented-tab filmstrip motion,
-and container morph in both platform styles.
-
-[![Route transitions running in g3-ui](https://raw.githubusercontent.com/g3techhq/g3-ui/main/docs/media/route-transitions-demo.webp)](https://github.com/g3techhq/g3-ui/raw/main/docs/media/route-transitions-demo.mp4)
-
-Keeping the executable showcase with `g3-ui` avoids maintaining a second set
-of imitation components here. This crate remains UI-agnostic and focused on
-route metadata, native navigation coordination, and snapshot behavior.
+You can see a working example [here](https://g3ui.g3tech.net/transitions). It runs inside the real
+`g3-ui` components the transitions are designed to support.
 
 This crate keeps route animation rules next to your `Routable` enum, then exposes navigation helpers and explicit snapshot marker components:
 
@@ -45,10 +43,34 @@ Every `NavigationAnimation` is a semantic event, not a specific animation - the 
 
 | Animation | iOS (UIKit) | Material (M3) |
 |---|---|---|
-| `PushLeft` / `PushRight` | Navigation-controller push/pop: the outgoing page never fully leaves - it parallax-shifts ~30% off and dims, as if sliding back in the z-axis under the incoming page. | Shared axis (X): both pages slide the same distance and cross-fade symmetrically, no dimming. |
-| `CoverUp` / `UncoverDown` | Page-sheet modal: the base page scales down slightly and gains rounded corners while it dims. | Modal bottom sheet: the base page dims under a scrim; no scale/corner-round. |
+| `PushLeft` / `PushRight` | Navigation-controller push/pop: the outgoing page never fully leaves - it parallax-shifts ~30% off and dims, as if sliding back in the z-axis under the incoming page. | Shared axis (X): both pages travel the standard 30dp distance with a sequential fade-through, reversing direction on Back. |
+| `CoverUp` / `UncoverDown` | Page-sheet modal: the base page scales down slightly and gains rounded corners while it dims. | M3 modal bottom-sheet window motion: 20% vertical travel plus fade, while the base dims without scaling or rounding. |
 | `Fade` | Quick plain cross-dissolve, used for unrelated peer routes. | The same quick cross-dissolve; keeping the incoming page opaque avoids WebView backdrop flashes. |
-| `MorphIn` / `MorphOut` | Generic scale+fade approximation of a card growing into its own route (no true shared-element geometry - this is a route-level helper, not a per-element one). | Same shape as iOS, with Material's emphasized easing/duration - an approximation of "container transform". |
+| `MorphIn` / `MorphOut` | Soft scale+fade fallback for a system-style zoom when source-view geometry isn't available. | Material container-transform approximation using the official 300ms enter and 250ms return timings; true shared-element geometry still requires a matched source element. |
+
+The Material page push follows the official Shared Axis X composition: a
+30dp slide plus sequential fade-through, with the documented 300ms duration
+and standard easing. The sheet timings and travel follow the published M3
+bottom-sheet window resources. The small leading-edge shadow is an elevation
+cue added for snapshot separation; it isn't part of the Shared Axis primitive.
+
+Two motions intentionally remain product choices rather than platform
+defaults: `Fade` is the fast cross-dissolve used by both modes, and segmented
+content moves as a full-width filmstrip. This preserves the behavior selected
+for g3-ui instead of restoring Material fade-through for unrelated routes.
+
+On iOS, the stylesheet reproduces the visible structure of UIKit navigation
+push/pop and page-sheet presentation. UIKit owns the real system animator and
+does not publish stable CSS duration or Bézier tokens, so these are
+native-style WebView approximations rather than claims of byte-for-byte system
+timing. Apple's fluid zoom also requires matched source-view geometry; the
+route-only morph uses the documented fallback above.
+
+Primary references: [Material motion patterns](https://github.com/material-components/material-components-android/blob/master/docs/theming/Motion.md),
+[M3 bottom-sheet enter](https://github.com/material-components/material-components-android/blob/master/lib/java/com/google/android/material/bottomsheet/res/anim/m3_bottom_sheet_slide_in.xml),
+[M3 bottom-sheet exit](https://github.com/material-components/material-components-android/blob/master/lib/java/com/google/android/material/bottomsheet/res/anim/m3_bottom_sheet_slide_out.xml),
+[Apple fluid transitions](https://developer.apple.com/documentation/uikit/enhancing-your-app-with-fluid-transitions),
+and [UIKit presentation controllers](https://developer.apple.com/documentation/uikit/uipresentationcontroller).
 
 Call `set_platform(Platform::Ios)` / `set_platform(Platform::Md)` once at startup, and again whenever your app's platform mode changes (e.g. a settings toggle), so `animated_navigate` renders the transition that matches. Without an explicit call, `get_platform()` falls back to `detect_platform()` (`cfg(target_os)` on native builds, user-agent sniffing on wasm).
 
