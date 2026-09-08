@@ -1,6 +1,6 @@
 [package]
 name = "g3-route-transitions"
-version = "0.1.0"
+version = "0.2.0"
 
 edition = "2024"
 description = "Route-owned View Transition helpers for Dioxus Router."
@@ -18,9 +18,9 @@ path = "src/lib.rs"
 
 [dependencies]
 dioxus = { version = "0.7.9", features = ["router"] }
-g3-route-transitions-macros = { version = "0.1.0", path = "macros" }
+g3-route-transitions-macros = { version = "0.2.0", path = "macros" }
 manganis = "0.7.9"
-g3-native-plugins = { version = "0.1.0", default-features = false, optional = true }
+g3-native-plugins = { version = "0.2.0", default-features = false, optional = true }
 
 [features]
 default = []

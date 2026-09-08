@@ -38,11 +38,15 @@ spell:
 security:
     cargo deny check
 
-pre-push: format-check check lint test spell
+pre-push: format-check check lint-strict test spell
 
 quality: pre-push
 
-ci: quality security
+package-check:
+    cargo package --allow-dirty --manifest-path macros/Cargo.toml
+    cargo package --allow-dirty --list
+
+ci: quality security package-check
 
 package:
     cargo package --manifest-path macros/Cargo.toml

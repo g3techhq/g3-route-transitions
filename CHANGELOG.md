@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-08
+
 ### Changed
 
 - The executable transition showcase now lives in the `g3-ui` playground, so
