@@ -188,7 +188,8 @@ pub enum NavigationAnimation {
     UncoverDown,
     /// A card-like element growing into its own full-screen detail route
     /// (Material "container transform"; approximated on iOS as a soft
-    /// scale/fade since iOS has no native equivalent).
+    /// scale/fade when no source geometry is available for a system-style
+    /// zoom transition).
     MorphIn,
     /// The reverse of [`NavigationAnimation::MorphIn`]: a detail route
     /// shrinking back down into the card that opened it.
@@ -735,6 +736,8 @@ mod tests {
         assert!(stylesheet.contains("route-transition-ios-dim-base"));
         assert!(stylesheet.contains("route-transition-md-dim-base"));
         assert!(stylesheet.contains("filter: brightness"));
+        assert!(stylesheet.contains("--route-transition-ios-presentation-backdrop"));
+        assert!(stylesheet.contains("box-shadow: 0 -14px 20px -14px"));
         assert!(stylesheet.contains("cover-up\"]::view-transition-old(cover)"));
         assert!(stylesheet.contains("uncover-down\"]::view-transition-new(cover)"));
         assert!(stylesheet.contains("opacity: 0"));
@@ -764,8 +767,8 @@ mod tests {
         assert!(!stylesheet.contains("--route-transition-debug-peek"));
         assert!(!stylesheet.contains("--route-transition-cover-x"));
         assert!(!stylesheet.contains("--route-transition-base-x"));
-        assert!(stylesheet.contains("transform: translateY(100vh)"));
-        assert!(stylesheet.contains("transform: translateY(0vh)"));
+        assert!(stylesheet.contains("transform: translateY(100%)"));
+        assert!(stylesheet.contains("transform: translateY(0)"));
         assert!(!stylesheet.contains("translateX(var(--route-transition-base-x))"));
     }
     #[test]
@@ -779,6 +782,23 @@ mod tests {
         assert!(stylesheet.contains("cover-up\"]::view-transition-old(base),"));
         assert!(stylesheet.contains("uncover-down\"]::view-transition-new(base)"));
         assert!(stylesheet.contains("z-index: 1"));
+    }
+    #[test]
+    fn hidden_base_pair_cannot_cover_a_full_page_snapshot() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+        let base_group = stylesheet
+            .split("html[data-route-transition=\"cover-up\"]::view-transition-group(base),")
+            .nth(2)
+            .and_then(|block| block.split('}').next())
+            .expect("missing cover base stacking rule");
+        let page_group = stylesheet
+            .split("html[data-route-transition=\"cover-up\"]::view-transition-group(page),")
+            .nth(2)
+            .and_then(|block| block.split('}').next())
+            .expect("missing cover page stacking rule");
+
+        assert!(base_group.contains("z-index: 0"));
+        assert!(page_group.contains("z-index: 1"));
     }
     #[test]
     fn snapshot_marker_components_are_public_contract() {
@@ -861,13 +881,21 @@ mod tests {
         for selector in [
             "[data-route-transition=\"push-left\"]::view-transition-group(page)",
             "[data-route-transition=\"push-right\"]::view-transition-group(page)",
+            "[data-route-transition=\"push-left\"]::view-transition-image-pair(page)",
+            "[data-route-transition=\"push-right\"]::view-transition-image-pair(page)",
             "[data-route-transition=\"cover-up\"]::view-transition-group(cover)",
             "[data-route-transition=\"uncover-down\"]::view-transition-group(cover)",
+            "[data-route-transition=\"cover-up\"]::view-transition-image-pair(cover)",
+            "[data-route-transition=\"uncover-down\"]::view-transition-image-pair(cover)",
         ] {
             assert!(stylesheet.contains(selector), "missing {selector}");
         }
         assert!(stylesheet.contains("overflow: hidden;"));
         assert!(stylesheet.contains("border-radius: var(--route-transition-clip-radius, 0px)"));
+        assert!(
+            stylesheet
+                .contains("clip-path: inset(0 round var(--route-transition-clip-radius, 0px))",)
+        );
     }
     #[test]
     fn sheet_backdrop_uses_the_resolved_theme_surface() {
@@ -988,10 +1016,16 @@ mod tests {
         let stylesheet = include_str!("../assets/route_transitions.css");
         assert!(stylesheet.contains("--route-transition-cover-duration: 0.6s"));
         assert!(stylesheet.contains("--route-transition-push-duration: 260ms"));
+        assert!(stylesheet.contains("--route-transition-push-duration: 300ms"));
         assert!(stylesheet.contains("--route-transition-fade-duration: 150ms"));
         assert!(stylesheet.contains("--route-transition-morph-duration: 350ms"));
-        assert!(stylesheet.contains("--route-transition-md-sheet-dismiss-duration: 280ms"),);
-        assert!(stylesheet.contains("to { transform: translateY(100vh); }"));
+        assert!(stylesheet.contains("--route-transition-morph-dismiss-duration: 240ms"));
+        assert!(stylesheet.contains("--route-transition-cover-duration: 400ms"));
+        assert!(stylesheet.contains("--route-transition-morph-duration: 300ms"));
+        assert!(stylesheet.contains("--route-transition-morph-dismiss-duration: 250ms"));
+        assert!(stylesheet.contains("--route-transition-md-sheet-dismiss-duration: 350ms"),);
+        assert!(stylesheet.contains("translateY(20%); opacity: 0"));
+        assert!(stylesheet.contains("to { transform: translateY(100%); }"));
         assert!(!stylesheet.contains("route-transition-duration-debug"));
         assert!(!stylesheet.contains("route-transition-mobile-dim-base"));
         assert!(!stylesheet.contains("route-transition-mobile-undim-base"));
@@ -1003,6 +1037,12 @@ mod tests {
         assert!(stylesheet.contains("translateX(-30%); filter: brightness(0.85)"));
         assert!(stylesheet.contains("route-transition-md-axis-out-left"));
         assert!(stylesheet.contains("route-transition-md-axis-in-left"));
+        assert!(stylesheet.contains("route-transition-md-axis-out-right"));
+        assert!(stylesheet.contains("route-transition-md-axis-in-right"));
+        assert!(stylesheet.contains("--route-transition-md-push-ease"));
+        assert!(stylesheet.contains("--route-transition-md-shared-axis-distance: 30px"));
+        assert!(stylesheet.contains("35%, 100% { opacity: 0; }"));
+        assert!(stylesheet.contains("box-shadow: -16px 0 16px -16px"));
     }
 
     /// A segment push is a filmstrip, not a page push. The two tab bodies are
@@ -1083,6 +1123,8 @@ mod tests {
 
         // Full-width travel has to be clipped to the segment's own box.
         assert!(stylesheet.contains("::view-transition-group(segment)"));
+        assert!(stylesheet.contains("::view-transition-image-pair(segment)"));
+        assert!(stylesheet.contains("clip-path: inset(0)"));
     }
     #[test]
     fn fade_transitions_are_the_same_fast_cross_dissolve_on_both_platforms() {
@@ -1100,6 +1142,11 @@ mod tests {
         assert!(stylesheet.contains("data-route-transition=\"morph-out\""));
         assert!(stylesheet.contains("route-transition-morph-grow-in"));
         assert!(stylesheet.contains("route-transition-morph-shrink-out"));
+        assert!(stylesheet.contains("route-transition-morph-dismiss-out"));
+        assert!(
+            stylesheet.contains("data-route-transition=\"morph-out\"]::view-transition-new(page)")
+        );
+        assert!(stylesheet.contains("::view-transition-old(page)"));
     }
     #[test]
     fn animation_data_values_match_css_contract() {
