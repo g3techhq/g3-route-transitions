@@ -7,20 +7,18 @@
 
 Route-owned View Transition helpers for Dioxus Router.
 
-## Transition showcase
+<p align="center">
+  <a href="https://github.com/g3techhq/g3-ui/raw/main/docs/media/route-transitions-demo.mp4">
+    <img
+      src="https://raw.githubusercontent.com/g3techhq/g3-ui/main/docs/media/route-transitions-demo.webp"
+      alt="g3-route-transitions running inside the g3-ui mobile device frame"
+      width="390"
+    >
+  </a>
+</p>
 
-The canonical interactive showcase now lives in the
-[`g3-ui` playground](https://github.com/g3techhq/g3-ui/tree/main/playground),
-where every transition runs inside the real components it is designed to
-support. Its shareable `/transitions` routes cover push and pop, sheet
-presentation and dismissal, peer-route fade, segmented-tab filmstrip motion,
-and container morph in both platform styles.
-
-[![Route transitions running in g3-ui](https://raw.githubusercontent.com/g3techhq/g3-ui/main/docs/media/route-transitions-demo.webp)](https://github.com/g3techhq/g3-ui/raw/main/docs/media/route-transitions-demo.mp4)
-
-Keeping the executable showcase with `g3-ui` avoids maintaining a second set
-of imitation components here. This crate remains UI-agnostic and focused on
-route metadata, native navigation coordination, and snapshot behavior.
+You can see a working example [here](https://g3ui.g3tech.net/transitions). It runs inside the real
+`g3-ui` components the transitions are designed to support.
 
 This crate keeps route animation rules next to your `Routable` enum, then exposes navigation helpers and explicit snapshot marker components:
 
