@@ -18,6 +18,35 @@ enum Route {
     Person { id: u8 },
     #[transition(cover, replace(key = id), push(group = tabs, key = id, order = tab))]
     Tabs { id: u8, tab: u8 },
+    #[transition(cover)]
+    Inbox {},
+    #[transition(cover, replaces = Inbox)]
+    Message { id: u8 },
+}
+/// A sheet that hands off to another sheet leaves no entry behind: Back from the
+/// second returns to the page under both. The hand-off still rises like any
+/// cover, instead of taking the fade between two unrelated sheets.
+#[test]
+fn a_cover_handing_off_to_another_cover_replaces_it_and_still_rises() {
+    let inbox = Route::Inbox {};
+    let message = Route::Message { id: 3 };
+    assert_eq!(inbox.transition_to(&message), NavigationAnimation::CoverUp);
+    assert!(inbox.replaces_history(&message));
+    assert_eq!(message.transition_back(), NavigationAnimation::UncoverDown);
+
+    // Directed: going the other way is ordinary navigation between sheets.
+    assert_eq!(message.transition_to(&inbox), NavigationAnimation::Fade);
+    assert!(!message.replaces_history(&inbox));
+
+    // Only a listed route hands off.
+    assert_eq!(
+        Route::Editor {}.transition_to(&message),
+        NavigationAnimation::Fade
+    );
+    assert!(!Route::Editor {}.replaces_history(&message));
+    let home = Route::Home { filter: 0 };
+    assert_eq!(home.transition_to(&message), NavigationAnimation::CoverUp);
+    assert!(!home.replaces_history(&message));
 }
 #[test]
 fn roots_push_full_screen_pages_and_fade_between_peers() {

@@ -43,6 +43,12 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 ///   in place. That pairing is what a segmented control wants - the tab body
 ///   moves left or right, and Back leaves the screen rather than walking back
 ///   through every tab the user touched.
+/// - `replaces = Route` or `replaces = (RouteA, RouteB)` declares routes this
+///   one takes over from. Navigating from a listed route into this one replaces
+///   that history entry instead of pushing, and animates as though entering from
+///   the page beneath: into a cover it slides up, into a pushed page it pushes
+///   left. It is for a sheet that hands off to another sheet - Back from the
+///   second returns to the page under both rather than reopening the first.
 ///
 /// Example:
 ///
@@ -95,6 +101,10 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(arms) => arms,
         Err(error) => return error.to_compile_error().into(),
     };
+    let hand_off_arms = match build_hand_off_arms(enum_ident, &route_variants) {
+        Ok(arms) => arms,
+        Err(error) => return error.to_compile_error().into(),
+    };
     quote! {
         # route_enum impl # enum_ident { fn transition_layer(& self) ->
         ::g3_route_transitions::RouteTransitionLayer { match self { # (# layer_arms),* }
@@ -103,7 +113,9 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         transition_pushes_forward_to(& self, next : &# enum_ident) -> bool { match (self,
         next) { # (# forward_arms,) * _ => false, } } fn transition_replaces_to(& self,
         next : &# enum_ident) -> bool { match (self, next) { # (# replace_arms,) * _ =>
-        false, } } pub (crate) fn transition_to(& self, next : &# enum_ident,) ->
+        false, } } fn transition_hands_off_to(& self, next : &# enum_ident) -> bool { match
+        (self, next) { # (# hand_off_arms,) * _ => false, } } pub (crate) fn
+        transition_to(& self, next : &# enum_ident,) ->
         ::g3_route_transitions::NavigationAnimation { < Self as
         ::g3_route_transitions::RouteTransitions >::transition_to(self, next) } } impl
         ::g3_route_transitions::RouteTransitions for # enum_ident { fn transition_to(&
@@ -112,7 +124,15 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .transition_pushes_forward_to(next) { return
         ::g3_route_transitions::NavigationAnimation::PushLeft; } if next
         .transition_pushes_forward_to(self) { return
-        ::g3_route_transitions::NavigationAnimation::PushRight; } match (self
+        ::g3_route_transitions::NavigationAnimation::PushRight; } if self
+        .transition_hands_off_to(next) { return match next.transition_layer() {
+        ::g3_route_transitions::RouteTransitionLayer::Cover => {
+        ::g3_route_transitions::NavigationAnimation::CoverUp }
+        ::g3_route_transitions::RouteTransitionLayer::Pushed => {
+        ::g3_route_transitions::NavigationAnimation::PushLeft }
+        ::g3_route_transitions::RouteTransitionLayer::Morph => {
+        ::g3_route_transitions::NavigationAnimation::MorphIn } _ =>
+        ::g3_route_transitions::NavigationAnimation::Fade, }; } match (self
         .transition_layer(), next.transition_layer()) { (current,
         ::g3_route_transitions::RouteTransitionLayer::Cover,) if current !=
         ::g3_route_transitions::RouteTransitionLayer::Cover => { return
@@ -140,7 +160,8 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         } }; } if self.transition_replaces_to(next) { return
         ::g3_route_transitions::NavigationAnimation::None; }
         ::g3_route_transitions::NavigationAnimation::Fade } fn replaces_history(&
-        self, next : &# enum_ident) -> bool { self.transition_replaces_to(next) } fn
+        self, next : &# enum_ident) -> bool { self.transition_replaces_to(next) || self
+        .transition_hands_off_to(next) } fn
         transition_back(& self) -> ::g3_route_transitions::NavigationAnimation { match
         self.transition_layer() { ::g3_route_transitions::RouteTransitionLayer::Cover =>
         { ::g3_route_transitions::NavigationAnimation::UncoverDown }
@@ -269,6 +290,38 @@ fn build_replace_arms(
         arms.push(quote! {
             (# from, # to) if # (# guard) &&* => true
         });
+    }
+    Ok(arms)
+}
+fn build_hand_off_arms(
+    enum_ident: &Ident,
+    route_variants: &[RouteVariant],
+) -> Result<Vec<TokenStream2>> {
+    let variants_by_name = route_variants
+        .iter()
+        .map(|variant| (variant.ident.to_string(), variant))
+        .collect::<BTreeMap<_, _>>();
+    let mut arms = Vec::new();
+    for to in route_variants {
+        let to_pattern = build_layer_pattern(enum_ident, &to.ident, &to.fields)?;
+        for source in &to.transition.replaces {
+            let Some(from) = variants_by_name.get(&source.to_string()) else {
+                return Err(Error::new_spanned(
+                    source,
+                    "replaces target is not a route variant",
+                ));
+            };
+            if from.ident == to.ident {
+                return Err(Error::new_spanned(
+                    source,
+                    "a route cannot replace itself; use `replace` for same-variant updates",
+                ));
+            }
+            let from_pattern = build_layer_pattern(enum_ident, &from.ident, &from.fields)?;
+            arms.push(quote! {
+                (# from_pattern, # to_pattern) => true
+            });
+        }
     }
     Ok(arms)
 }
@@ -452,6 +505,7 @@ struct TransitionArgs {
     push: Option<PushArgs>,
     forward: Vec<Ident>,
     replace: Option<ReplaceArgs>,
+    replaces: Vec<Ident>,
 }
 impl Default for TransitionArgs {
     fn default() -> Self {
@@ -460,6 +514,7 @@ impl Default for TransitionArgs {
             push: None,
             forward: Vec::new(),
             replace: None,
+            replaces: Vec::new(),
         }
     }
 }
@@ -491,6 +546,10 @@ impl Parse for TransitionArgs {
                     } else {
                         Some(ReplaceArgs::default())
                     };
+                }
+                "replaces" => {
+                    input.parse::<Token![=]>()?;
+                    args.replaces = parse_ident_list(input)?;
                 }
                 _ => return Err(Error::new_spanned(ident, "unknown transition argument")),
             }

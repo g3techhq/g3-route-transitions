@@ -135,7 +135,16 @@ Transition rules:
 - `key = field` or `key = (field_a, field_b)` scopes a push group to one logical entity.
 - `forward = Route` or `forward = (RouteA, RouteB)` declares directed drill-down destinations.
 - `replace` makes changes between values of the same variant skip animation and replace browser history. `replace(key = id)` applies only when the identity fields match.
+- `replaces = Route` or `replaces = (RouteA, RouteB)` hands a listed route off to this one: navigating from it replaces its history entry and animates as though entering from the page beneath, so a sheet opened from another sheet rises, and Back returns to the page under both.
 - Routes with no more specific match fall back to `Fade`.
+
+While a transition runs, `<html>` carries `data-route-transition` and `data-route-transition-platform`, plus `data-route-transition-from` (the route being left) and `data-route-transition-to` (the route being entered; absent on Back, where the destination is not known until the router pops). Scope snapshot names with them when one cover should lift an element that another should not:
+
+```css
+html[data-route-transition="cover-up"][data-route-transition-to^="/watch/"] .player {
+  view-transition-name: player;
+}
+```
 
 ## Mark Snapshot Regions
 

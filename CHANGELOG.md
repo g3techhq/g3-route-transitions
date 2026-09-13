@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-13
+
+### Added
+
+- `#[transition(replaces = Route)]` hands a route off to another. Navigating
+  from a listed route replaces its history entry and animates by the
+  destination's layer, so a cover opened from another cover rises instead of
+  fading, and Back returns to the page under both instead of reopening the first.
+- Transitions publish `data-route-transition-from` and
+  `data-route-transition-to` on `<html>` for their duration, set before the
+  outgoing snapshot and cleared afterwards. `to` is omitted on Back, whose
+  destination is unknown until the router pops. App CSS can use them to scope
+  snapshot naming to the routes a transition moves between.
+
 ## [0.2.0] - 2026-09-08
 
 ### Changed

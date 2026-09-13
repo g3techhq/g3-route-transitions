@@ -81,6 +81,10 @@
 //!   history entry - the combination a segmented control wants, where the tab
 //!   body tracks the finger but Back leaves the screen instead of retracing
 //!   every tab the user touched.
+//! - `replaces = Route` or `replaces = (RouteA, RouteB)` hands a listed route
+//!   off to this one: navigating from it replaces that history entry and
+//!   animates as though entering from the page beneath. A cover opened from
+//!   another cover rises, and Back returns to the page under both.
 //! - If two routes are not equivalent, not a cover/uncover pair, and not matching push peers, the
 //!   generated method returns [`NavigationAnimation::Fade`].
 //!
@@ -362,13 +366,23 @@ pub fn RouteTransitionRoot(children: Element, class: Option<String>) -> Element 
 /// These used to arrive over the eval channel, which cost two round trips
 /// between wasm and JS before the transition could start — dead time between
 /// the tap and the first frame of the animation. Both values are known on the
-/// Rust side already, so they are written into the script instead. They come
-/// from fixed enums, so there is nothing to escape.
+/// Rust side already, so they are written into the script instead. The
+/// animation and platform come from fixed enums, so there is nothing to escape;
+/// the route paths are written as escaped string literals, placeholder quotes
+/// included.
 const ANIMATION_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_ANIMATION__";
 const PLATFORM_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_PLATFORM__";
+const FROM_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_FROM__\"";
+const TO_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_TO__\"";
 const VIEW_TRANSITION_NAVIGATE: &str = r#"
 const animation = "__DX_ROUTE_TRANSITION_ANIMATION__";
 const platform = "__DX_ROUTE_TRANSITION_PLATFORM__";
+// The route being left, and the one being entered when it is known. Back does
+// not know its destination until the router has popped, so it leaves `to`
+// empty. Published on <html> so app CSS can scope snapshot naming to the routes
+// involved - one sheet opening can want an element lifted that another does not.
+const from = "__DX_ROUTE_TRANSITION_FROM__";
+const to = "__DX_ROUTE_TRANSITION_TO__";
 const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
 
 // View-transition snapshots are painted in a document-level pseudo tree. They
@@ -447,6 +461,8 @@ try {
     } else {
         document.documentElement.dataset.routeTransition = animation;
         document.documentElement.dataset.routeTransitionPlatform = platform;
+        if (from) document.documentElement.dataset.routeTransitionFrom = from;
+        if (to) document.documentElement.dataset.routeTransitionTo = to;
         dxRouteTransitionPaintContext();
 
         // The outgoing snapshot is taken synchronously inside
@@ -494,15 +510,48 @@ try {
 } finally {
     delete document.documentElement.dataset.routeTransition;
     delete document.documentElement.dataset.routeTransitionPlatform;
+    delete document.documentElement.dataset.routeTransitionFrom;
+    delete document.documentElement.dataset.routeTransitionTo;
     document.documentElement.style.removeProperty("--route-transition-surface-bg");
     document.documentElement.style.removeProperty("--route-transition-document-bg");
     document.documentElement.style.removeProperty("--route-transition-clip-radius");
 }
 "#;
-async fn run_animated_navigation(animation: NavigationAnimation, mut navigate: impl FnMut()) {
+/// `value` as a double-quoted JavaScript string literal.
+///
+/// Route paths carry their parameters, which can hold quotes, backslashes or
+/// line separators; any of those written raw would end the literal early.
+fn js_string_literal(value: &str) -> String {
+    let mut literal = String::with_capacity(value.len() + 2);
+    literal.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => literal.push_str("\\\""),
+            '\\' => literal.push_str("\\\\"),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            '\u{2028}' => literal.push_str("\\u2028"),
+            '\u{2029}' => literal.push_str("\\u2029"),
+            character if character.is_control() => {
+                literal.push_str(&format!("\\u{:04x}", character as u32));
+            }
+            character => literal.push(character),
+        }
+    }
+    literal.push('"');
+    literal
+}
+async fn run_animated_navigation(
+    animation: NavigationAnimation,
+    from: &str,
+    to: Option<&str>,
+    mut navigate: impl FnMut(),
+) {
     let script = VIEW_TRANSITION_NAVIGATE
         .replace(ANIMATION_PLACEHOLDER, animation.data_value())
-        .replace(PLATFORM_PLACEHOLDER, get_platform().data_value());
+        .replace(PLATFORM_PLACEHOLDER, get_platform().data_value())
+        .replace(FROM_PLACEHOLDER, &js_string_literal(from))
+        .replace(TO_PLACEHOLDER, &js_string_literal(to.unwrap_or_default()));
     let mut transition = eval(&script);
     let mut navigated = false;
     loop {
@@ -540,6 +589,7 @@ where
     let animation = current_route.transition_to(&route);
     let replace = current_route.replaces_history(&route);
     let navigator = use_navigator();
+    let from = current_route.to_string();
     let route = route.to_string();
     if animation == NavigationAnimation::None {
         if replace {
@@ -549,7 +599,7 @@ where
         }
         return;
     }
-    run_animated_navigation(animation, || {
+    run_animated_navigation(animation, &from, Some(&route.clone()), || {
         if replace {
             _ = navigator.replace(route.clone());
         } else {
@@ -583,7 +633,8 @@ where
         navigator.go_back();
         return true;
     }
-    run_animated_navigation(animation, || navigator.go_back()).await;
+    let from = current_route.to_string();
+    run_animated_navigation(animation, &from, None, || navigator.go_back()).await;
     true
 }
 /// Pop actual router history with an animated reverse transition, falling back
@@ -937,6 +988,34 @@ mod tests {
         assert!(!VIEW_TRANSITION_NAVIGATE.contains("g3RouteTransition"));
     }
     #[test]
+    fn transitions_publish_the_routes_they_move_between_and_clear_them() {
+        assert!(VIEW_TRANSITION_NAVIGATE.contains(FROM_PLACEHOLDER));
+        assert!(VIEW_TRANSITION_NAVIGATE.contains(TO_PLACEHOLDER));
+        // Set before the outgoing snapshot is taken, like the animation itself,
+        // so CSS keyed on them names elements in the old state too.
+        let set_from = VIEW_TRANSITION_NAVIGATE
+            .find("dataset.routeTransitionFrom = from")
+            .expect("from is published");
+        let started = VIEW_TRANSITION_NAVIGATE
+            .find("document.startViewTransition(async () =>")
+            .expect("the transition is started");
+        assert!(set_from < started);
+        assert!(VIEW_TRANSITION_NAVIGATE.contains("dataset.routeTransitionTo = to"));
+        let cleanup = VIEW_TRANSITION_NAVIGATE
+            .split("} finally {")
+            .nth(1)
+            .expect("the script cleans up");
+        assert!(cleanup.contains("delete document.documentElement.dataset.routeTransitionFrom;"));
+        assert!(cleanup.contains("delete document.documentElement.dataset.routeTransitionTo;"));
+    }
+    #[test]
+    fn route_paths_are_escaped_into_string_literals() {
+        assert_eq!(js_string_literal("/watch/abc"), "\"/watch/abc\"");
+        assert_eq!(js_string_literal("a\"b\\c"), "\"a\\\"b\\\\c\"");
+        assert_eq!(js_string_literal("a\nb\u{2028}"), "\"a\\nb\\u2028\"");
+        assert_eq!(js_string_literal(""), "\"\"");
+    }
+    #[test]
     fn rust_side_acknowledges_navigation_after_router_push() {
         let source = include_str!("lib.rs");
         let production_source = source
@@ -1188,9 +1267,13 @@ mod tests {
                 ANIMATION_PLACEHOLDER,
                 NavigationAnimation::CoverUp.data_value(),
             )
-            .replace(PLATFORM_PLACEHOLDER, Platform::Ios.data_value());
+            .replace(PLATFORM_PLACEHOLDER, Platform::Ios.data_value())
+            .replace(FROM_PLACEHOLDER, &js_string_literal("/queue"))
+            .replace(TO_PLACEHOLDER, &js_string_literal("/watch/abc"));
         assert!(filled.contains(r#"const animation = "cover-up";"#));
         assert!(filled.contains(r#"const platform = "ios";"#));
+        assert!(filled.contains(r#"const from = "/queue";"#));
+        assert!(filled.contains(r#"const to = "/watch/abc";"#));
         assert!(
             !filled.contains("__DX_ROUTE_TRANSITION"),
             "every placeholder is substituted",
