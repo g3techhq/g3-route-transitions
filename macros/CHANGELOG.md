@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-13
+
+### Added
+
+- Route metadata accepts `replaces = Route` handoff rules, allowing one route
+  to replace another route's history entry while using the destination's
+  transition layer.
+
 ## [0.1.0] - 2026-09-06
 
 Initial release.
