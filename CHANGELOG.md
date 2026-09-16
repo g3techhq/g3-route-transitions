@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- iOS sheet dismissal now derives its exposed presentation backdrop from the
+  incoming page, preventing a light outgoing sheet from flashing behind a
+  dark-mode page during the uncover animation.
+
 ## [0.3.0] - 2026-09-13
 
 ### Added

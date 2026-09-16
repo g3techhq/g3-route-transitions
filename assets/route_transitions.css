@@ -39,9 +39,9 @@ body {
 }
 
 /* Named snapshots live in a document-level pseudo tree, outside any app-shell
-   theme or clipping context. The runtime copies the outgoing document and
-   route-surface colors to <html> before capture so an embedded demo keeps its
-   dark stage and an iOS sheet never reveals a white canvas behind a dark page. */
+   theme or clipping context. The runtime copies the document and route-surface
+   colors to <html> as each side renders so an embedded demo keeps its dark
+   stage and an iOS sheet never reveals a white canvas behind a dark page. */
 html[data-route-transition]::view-transition {
     background: var(
         --route-transition-document-bg,
@@ -172,10 +172,23 @@ html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
    down, the newly exposed area should therefore match that dimmed page rather
    than reveal the host document or the undimmed app surface. */
 html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-image-pair(base),
-html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-image-pair(page),
+html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-image-pair(page) {
+    background: var(--route-transition-ios-presentation-backdrop);
+}
+
+/* An uncover's base snapshot belongs to the incoming route. Its theme can
+   differ from the outgoing sheet, so use the color captured after navigation
+   instead of carrying the sheet's light surface into a dark-mode dismissal. */
 html[data-route-transition-platform="ios"][data-route-transition="uncover-down"]::view-transition-image-pair(base),
 html[data-route-transition-platform="ios"][data-route-transition="uncover-down"]::view-transition-image-pair(page) {
-    background: var(--route-transition-ios-presentation-backdrop);
+    background: color-mix(
+        in srgb,
+        var(
+            --route-transition-incoming-surface-bg,
+            var(--route-transition-surface-bg, var(--route-transition-bg, var(--color-bg, Canvas)))
+        ) 72%,
+        black
+    );
 }
 
 html[data-route-transition="cover-up"]::view-transition-group(base),

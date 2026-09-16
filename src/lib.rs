@@ -388,20 +388,25 @@ const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduc
 // View-transition snapshots are painted in a document-level pseudo tree. They
 // do not inherit a theme that is scoped to an app shell, and they are not
 // clipped by an embedded shell's rounded/overflow-hidden ancestor. Capture the
-// outgoing surface's resolved paint values while it is still in the DOM and
-// publish them on <html>, where the pseudo tree can inherit them.
+// resolved paint values for both routes and publish them on <html>, where the
+// pseudo tree can inherit them.
 const dxRouteTransitionOpaqueBackground = (element) => {
     if (!element) return null;
     const color = window.getComputedStyle(element).backgroundColor;
     return color && color !== "transparent" && color !== "rgba(0, 0, 0, 0)" ? color : null;
 };
-const dxRouteTransitionPaintContext = () => {
+const dxRouteTransitionSurfaceBackground = () => {
     const root = document.documentElement;
     const surface = document.querySelector(".route-transition-page, .route-transition-base");
-    const surfaceBackground = dxRouteTransitionOpaqueBackground(surface)
+    return dxRouteTransitionOpaqueBackground(surface)
         ?? dxRouteTransitionOpaqueBackground(document.body)
         ?? dxRouteTransitionOpaqueBackground(root)
         ?? "Canvas";
+};
+const dxRouteTransitionPaintContext = () => {
+    const root = document.documentElement;
+    const surface = document.querySelector(".route-transition-page, .route-transition-base");
+    const surfaceBackground = dxRouteTransitionSurfaceBackground();
     const documentBackground = dxRouteTransitionOpaqueBackground(document.body)
         ?? dxRouteTransitionOpaqueBackground(root)
         ?? surfaceBackground;
@@ -421,6 +426,12 @@ const dxRouteTransitionPaintContext = () => {
     root.style.setProperty("--route-transition-surface-bg", surfaceBackground);
     root.style.setProperty("--route-transition-document-bg", documentBackground);
     root.style.setProperty("--route-transition-clip-radius", clipRadius);
+};
+const dxRouteTransitionIncomingPaintContext = () => {
+    document.documentElement.style.setProperty(
+        "--route-transition-incoming-surface-bg",
+        dxRouteTransitionSurfaceBackground(),
+    );
 };
 // Resolves once the router has replaced the page, or after a ceiling if it
 // renders something indistinguishable.
@@ -491,6 +502,10 @@ try {
             }
 
             await rendered;
+            // Dismissal reveals the newly rendered route, not the outgoing
+            // sheet. Capture its resolved theme color before the new snapshot
+            // is taken so dark pages do not inherit a light sheet backdrop.
+            dxRouteTransitionIncomingPaintContext();
         });
 
         try {
@@ -513,6 +528,7 @@ try {
     delete document.documentElement.dataset.routeTransitionFrom;
     delete document.documentElement.dataset.routeTransitionTo;
     document.documentElement.style.removeProperty("--route-transition-surface-bg");
+    document.documentElement.style.removeProperty("--route-transition-incoming-surface-bg");
     document.documentElement.style.removeProperty("--route-transition-document-bg");
     document.documentElement.style.removeProperty("--route-transition-clip-radius");
 }
@@ -921,9 +937,30 @@ mod tests {
         );
         assert!(script.contains(".route-transition-page, .route-transition-base"));
         assert!(script.contains("--route-transition-surface-bg"));
+        assert!(script.contains("--route-transition-incoming-surface-bg"));
         assert!(script.contains("--route-transition-document-bg"));
         assert!(script.contains("--route-transition-clip-radius"));
         assert!(script.contains("style.removeProperty(\"--route-transition-surface-bg\")"));
+        assert!(
+            script.contains("style.removeProperty(\"--route-transition-incoming-surface-bg\")"),
+        );
+    }
+    #[test]
+    fn runtime_captures_the_incoming_surface_before_the_new_snapshot() {
+        let script = VIEW_TRANSITION_NAVIGATE;
+        let callback = script
+            .find("document.startViewTransition(async () =>")
+            .expect("the transition is started");
+        let body = &script[callback..];
+        let rendered = body.find("await rendered;").expect("the new route renders");
+        let incoming = body
+            .find("dxRouteTransitionIncomingPaintContext();")
+            .expect("the incoming paint context is captured");
+
+        assert!(
+            rendered < incoming,
+            "the incoming color must be read from the newly rendered route",
+        );
     }
     #[test]
     fn spatial_snapshot_groups_clip_to_embedded_shells() {
@@ -954,6 +991,7 @@ mod tests {
 
         assert!(stylesheet.contains("--route-transition-document-bg"));
         assert!(stylesheet.contains("--route-transition-surface-bg"));
+        assert!(stylesheet.contains("--route-transition-incoming-surface-bg"));
         assert!(stylesheet.contains(
             "[data-route-transition=\"cover-up\"]::view-transition-image-pair(page)",
         ));
