@@ -789,6 +789,40 @@ where
     })
     .await;
 }
+
+/// Navigate with an explicit transition while preserving the route's history
+/// replacement rule. This is for UI state encoded in a route (for example a
+/// segmented filter) whose visual relationship is known by the caller even
+/// when the route taxonomy deliberately treats the update as `None`.
+pub async fn animated_navigate_with<Route>(route: Route, animation: NavigationTransition)
+where
+    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+{
+    let current_route = router().current::<Route>().clone();
+    if current_route == route {
+        return;
+    }
+    let replace = current_route.replaces_history(&route);
+    let navigator = navigator();
+    let from = current_route.to_string();
+    let route = route.to_string();
+    if animation == NavigationTransition::None {
+        if replace {
+            _ = navigator.replace(route);
+        } else {
+            _ = navigator.push(route);
+        }
+        return;
+    }
+    run_animated_navigation(animation, &from, Some(&route.clone()), || {
+        if replace {
+            _ = navigator.replace(route.clone());
+        } else {
+            _ = navigator.push(route.clone());
+        }
+    })
+    .await;
+}
 /// Pop real router history with `current.transition_back()`.
 ///
 /// Calling `navigator().go_back()` directly changes the route before the old
