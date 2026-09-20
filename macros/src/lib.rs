@@ -1,7 +1,8 @@
 //! Proc-macro support for [`g3-route-transitions`](https://docs.rs/g3-route-transitions).
 //!
-//! This crate is an implementation detail; use `g3_route_transitions::route_transitions`
-//! rather than depending on it directly.
+//! This crate is an implementation detail. Import the documented
+//! `g3_route_transitions::RouteTransitions` derive instead of depending on this
+//! crate directly.
 #![warn(missing_docs)]
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -10,71 +11,131 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_macro_input};
-/// Adds route-owned View Transition metadata to a Dioxus `Routable` enum.
+/// Derives route-owned View Transition behavior for a Dioxus `Routable` enum.
 ///
-/// Place this attribute on the same enum that derives `Routable`, then add
-/// `#[transition(...)]` metadata to individual route variants.
+/// Add `RouteTransitions` to the same derive list as `Routable`, then add
+/// `#[transition(...)]` to variants that need more than the default. Hover
+/// `RouteTransitions` in an editor backed by rust-analyzer to see this
+/// reference without leaving the route declaration.
 ///
-/// Supported variant metadata:
+/// # Options
 ///
-/// - `#[transition(base)]` marks a normal page. This is also the default.
-/// - `#[transition(root)]` marks a stable application root such as a
-///   bottom-tab destination.
-/// - `#[transition(pushed)]` marks a full-screen page pushed above a root.
-/// - `#[transition(cover)]` marks a sheet/modal route. Navigating into a cover
-///   returns `NavigationAnimation::CoverUp`; navigating out returns
-///   `NavigationAnimation::UncoverDown`.
-/// - `#[transition(morph)]` marks a route that grows out of a card on a base
-///   route. Base-to-morph returns `NavigationAnimation::MorphIn`;
-///   morph-to-base returns `NavigationAnimation::MorphOut`.
-/// - `push(group = name, order = field)` groups ordered peer routes. The order
-///   field must implement `Ord`. Moving to a greater value pushes left; moving
-///   to a smaller value pushes right.
-/// - `key = field` or `key = (field_a, field_b)` scopes push comparisons to
-///   matching route parameters.
-/// - `forward = Route` or `forward = (RouteA, RouteB)` declares directed
-///   drill-down destinations. Forward navigation pushes left; its reverse
-///   pushes right.
-/// - `replace` makes changes between values of the same variant update the
-///   current browser-history entry instead of pushing a new one.
-///   `replace(key = field)` scopes that behavior to a logical record. `replace`
-///   governs history, not motion: on its own it also suppresses the animation,
-///   but combined with `push` the route still slides while replacing the entry
-///   in place. That pairing is what a segmented control wants - the tab body
-///   moves left or right, and Back leaves the screen rather than walking back
-///   through every tab the user touched.
-/// - `replaces = Route` or `replaces = (RouteA, RouteB)` declares routes this
-///   one takes over from. Navigating from a listed route into this one replaces
-///   that history entry instead of pushing, and animates as though entering from
-///   the page beneath: into a cover it slides up, into a pushed page it pushes
-///   left. It is for a sheet that hands off to another sheet - Back from the
-///   second returns to the page under both rather than reopening the first.
+/// Each option may appear at most once per variant.
 ///
-/// Example:
+/// | Option | Meaning |
+/// |---|---|
+/// | `layer = base` | Ordinary page. This is the default. |
+/// | `layer = stack_root` | Root of a navigation stack, such as a bottom-tab destination. |
+/// | `layer = stack_page` | Full-screen page pushed above a stack root. |
+/// | `layer = sheet` | Routed sheet presented over whatever page was showing. |
+/// | `forward_to = Route` / `forward_to = (A, B)` | Directed drill-down: moving to a listed variant is `Forward`, and moving from it back to this variant is `Backward`. |
+/// | `peers(group = g, order = field)` | Ordered siblings, such as tabs. Moving to a greater `order` is `Forward`, to a smaller one `Backward`, to an equal one `None`. |
+/// | `peers(group = g, key = field, order = field)` | As above, but only routes whose `key` fields are equal are peers. `key = (a, b)` compares several fields. |
+/// | `history = replace` | Navigating between two values of this variant replaces the current history entry. |
+/// | `history = replace(key = field)` | As above, but only when the `key` fields are equal. |
+/// | `handoff_from = Route` / `handoff_from = (A, B)` | Arriving here from a listed variant replaces that variant's history entry, so Back skips it. |
+///
+/// # Forward navigation
+///
+/// [`animated_navigate`] asks the current route for `transition_to(next)`.
+/// The first matching rule wins:
+///
+/// | # | Rule | Transition | History |
+/// |---|---|---|---|
+/// | 1 | `current == next` | `None` (navigation is skipped entirely) | unchanged |
+/// | 2 | `current` lists `next`'s variant in `forward_to` | `Forward` | push |
+/// | 3 | `next` lists `current`'s variant in `forward_to` | `Backward` | push |
+/// | 4 | `next` lists `current`'s variant in `handoff_from` | by `next`'s layer: `sheet` → `PresentSheet`, `stack_page` → `Forward`, otherwise `CrossFade` | **replace** |
+/// | 5 | `current` is not a `sheet`, `next` is a `sheet` | `PresentSheet` | push* |
+/// | 6 | `current` is a `sheet`, `next` is not | `DismissSheet` | push* |
+/// | 7 | `stack_root` → `stack_page` | `Forward` | push* |
+/// | 8 | `stack_page` → `stack_root` | `Backward` | push* |
+/// | 9 | both in the same `peers` group (and `key`s match) | `Forward` / `Backward` / `None` by `order` | push* |
+/// | 10 | same variant with a matching `history = replace` | `None` | **replace** |
+/// | 11 | anything else | `CrossFade` | push* |
+///
+/// \* History is replaced instead whenever rule 4's or rule 10's condition
+/// also holds, even if an earlier rule chose the animation. For example, tabs
+/// declared with both `peers(...)` and `history = replace` slide *and*
+/// replace history.
+///
+/// Layer pairs not listed in rules 5–8 have no built-in relationship:
+/// `base` ↔ anything non-sheet, `stack_root` ↔ `stack_root`,
+/// `stack_page` ↔ `stack_page`, and `sheet` ↔ `sheet` all fall through to
+/// `peers`, `history`, and finally `CrossFade`. Use `forward_to` to make two
+/// stack pages slide.
+///
+/// If two variants list each other in `forward_to`, rule 2 applies in both
+/// directions, so both moves are `Forward`.
+///
+/// # Back navigation
+///
+/// [`try_animated_back`] and [`animated_back_or_navigate`] pop real router
+/// history. The router does not reveal the destination until after the old
+/// page has been captured, so `transition_back()` looks **only at the layer of
+/// the route being left**:
+///
+/// | Leaving a… | Back transition |
+/// |---|---|
+/// | `sheet` | `DismissSheet` |
+/// | `stack_page` | `Backward` |
+/// | `base` or `stack_root` | `CrossFade` |
+///
+/// This means Back does not always mirror the forward animation. For example,
+/// `forward_to` between two `base` routes slides forward but cross-fades on
+/// Back, and two unrelated `stack_page` routes cross-fade forward but slide
+/// on Back. Give drill-down destinations `layer = stack_page` (or
+/// `layer = sheet`) when Back should mirror the forward motion.
+///
+/// # Requirements
+///
+/// - Variants must be unit variants or have named fields. Tuple variants are
+///   rejected.
+/// - `forward_to` and `handoff_from` must name other variants of the same
+///   enum.
+/// - Fields named by `key` must implement `PartialEq`, and `order` fields must
+///   implement `Ord`. Every variant in a `peers` group must have fields with
+///   those names and compatible types, because values are compared across
+///   variants.
+/// - `peers(...)` and keyed `history = replace(key = ...)` require named
+///   fields.
+///
+/// # Example
 ///
 /// ```ignore
-/// #[route_transitions]
-/// #[derive(Clone, Routable, PartialEq)]
+/// #[derive(Clone, Routable, PartialEq, RouteTransitions)]
 /// enum Route {
-///     #[transition(root, replace)]
+///     // Tab root. Changing `tab` swaps content in place without a history entry.
+///     #[transition(layer = stack_root, history = replace)]
 ///     #[route("/items?:tab")]
-///     Items { tab: ItemsTab },
+///     Items { tab: String },
 ///
-///     #[transition(pushed, replace(key = item_id), forward = ItemComments)]
-///     #[route("/items/:item_id?:tab")]
-///     ItemDetails { item_id: String, tab: ItemTab },
+///     // Slides in over `Items` (rule 7) and slides back out (Back from a stack page).
+///     // `forward_to` is needed because two stack pages otherwise cross-fade.
+///     #[transition(layer = stack_page, forward_to = ItemComments)]
+///     #[route("/items/:item_id")]
+///     ItemDetails { item_id: String },
 ///
-///     #[transition(pushed)]
+///     #[transition(layer = stack_page)]
 ///     #[route("/items/:item_id/comments")]
 ///     ItemComments { item_id: String },
+///
+///     // Rises over whichever page is showing and drops away on Back.
+///     #[transition(layer = sheet)]
+///     #[route("/items/new")]
+///     NewItem {},
 /// }
 /// ```
-#[proc_macro_attribute]
-pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut route_enum = parse_macro_input!(item as ItemEnum);
+///
+/// [`animated_navigate`]: https://docs.rs/g3-route-transitions/latest/g3_route_transitions/fn.animated_navigate.html
+/// [`try_animated_back`]: https://docs.rs/g3-route-transitions/latest/g3_route_transitions/fn.try_animated_back.html
+/// [`animated_back_or_navigate`]: https://docs.rs/g3-route-transitions/latest/g3_route_transitions/fn.animated_back_or_navigate.html
+#[proc_macro_derive(RouteTransitions, attributes(transition))]
+pub fn derive_route_transitions(item: TokenStream) -> TokenStream {
+    let route_enum = parse_macro_input!(item as ItemEnum);
     let mut route_variants = Vec::new();
-    for variant in &mut route_enum.variants {
-        let transition = match take_transition_attr(variant) {
+    for variant in &route_enum.variants {
+        let transition = match parse_transition_attr(variant) {
             Ok(transition) => transition,
             Err(error) => return error.to_compile_error().into(),
         };
@@ -89,7 +150,7 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(arms) => arms,
         Err(error) => return error.to_compile_error().into(),
     };
-    let push_arms = match build_push_ordering_arms(enum_ident, &route_variants) {
+    let peer_arms = match build_peer_ordering_arms(enum_ident, &route_variants) {
         Ok(arms) => arms,
         Err(error) => return error.to_compile_error().into(),
     };
@@ -106,87 +167,70 @@ pub fn route_transitions(_attr: TokenStream, item: TokenStream) -> TokenStream {
         Err(error) => return error.to_compile_error().into(),
     };
     quote! {
-        # route_enum impl # enum_ident { fn transition_layer(& self) ->
+        #[doc(hidden)] impl # enum_ident { fn __g3_route_transition_layer(&self) ->
         ::g3_route_transitions::RouteTransitionLayer { match self { # (# layer_arms),* }
-        } fn transition_push_ordering_to(& self, next : &# enum_ident) -> Option <
-        std::cmp::Ordering > { match (self, next) { # (# push_arms,) * _ => None, } } fn
-        transition_pushes_forward_to(& self, next : &# enum_ident) -> bool { match (self,
-        next) { # (# forward_arms,) * _ => false, } } fn transition_replaces_to(& self,
+        } fn __g3_route_transition_peer_ordering_to(& self, next : &# enum_ident) -> Option <
+        std::cmp::Ordering > { match (self, next) { # (# peer_arms,) * _ => None, } } fn
+        __g3_route_transition_is_forward_to(& self, next : &# enum_ident) -> bool { match (self,
+        next) { # (# forward_arms,) * _ => false, } } fn __g3_route_transition_replaces_history_to(& self,
         next : &# enum_ident) -> bool { match (self, next) { # (# replace_arms,) * _ =>
-        false, } } fn transition_hands_off_to(& self, next : &# enum_ident) -> bool { match
-        (self, next) { # (# hand_off_arms,) * _ => false, } } pub (crate) fn
-        transition_to(& self, next : &# enum_ident,) ->
-        ::g3_route_transitions::NavigationAnimation { < Self as
-        ::g3_route_transitions::RouteTransitions >::transition_to(self, next) } } impl
+        false, } } fn __g3_route_transition_hands_off_to(& self, next : &# enum_ident) -> bool { match
+        (self, next) { # (# hand_off_arms,) * _ => false, } } } impl
         ::g3_route_transitions::RouteTransitions for # enum_ident { fn transition_to(&
-        self, next : &# enum_ident,) -> ::g3_route_transitions::NavigationAnimation { if
-        self == next { return ::g3_route_transitions::NavigationAnimation::None; } if self
-        .transition_pushes_forward_to(next) { return
-        ::g3_route_transitions::NavigationAnimation::PushLeft; } if next
-        .transition_pushes_forward_to(self) { return
-        ::g3_route_transitions::NavigationAnimation::PushRight; } if self
-        .transition_hands_off_to(next) { return match next.transition_layer() {
-        ::g3_route_transitions::RouteTransitionLayer::Cover => {
-        ::g3_route_transitions::NavigationAnimation::CoverUp }
-        ::g3_route_transitions::RouteTransitionLayer::Pushed => {
-        ::g3_route_transitions::NavigationAnimation::PushLeft }
-        ::g3_route_transitions::RouteTransitionLayer::Morph => {
-        ::g3_route_transitions::NavigationAnimation::MorphIn } _ =>
-        ::g3_route_transitions::NavigationAnimation::Fade, }; } match (self
-        .transition_layer(), next.transition_layer()) { (current,
-        ::g3_route_transitions::RouteTransitionLayer::Cover,) if current !=
-        ::g3_route_transitions::RouteTransitionLayer::Cover => { return
-        ::g3_route_transitions::NavigationAnimation::CoverUp },
-        (::g3_route_transitions::RouteTransitionLayer::Cover, next,) if next !=
-        ::g3_route_transitions::RouteTransitionLayer::Cover => { return
-        ::g3_route_transitions::NavigationAnimation::UncoverDown },
-        (::g3_route_transitions::RouteTransitionLayer::Base,
-        ::g3_route_transitions::RouteTransitionLayer::Morph,) => return
-        ::g3_route_transitions::NavigationAnimation::MorphIn,
-        (::g3_route_transitions::RouteTransitionLayer::Morph,
-        ::g3_route_transitions::RouteTransitionLayer::Base,) => return
-        ::g3_route_transitions::NavigationAnimation::MorphOut,
-        (::g3_route_transitions::RouteTransitionLayer::Root,
-        ::g3_route_transitions::RouteTransitionLayer::Pushed,) => return
-        ::g3_route_transitions::NavigationAnimation::PushLeft,
-        (::g3_route_transitions::RouteTransitionLayer::Pushed,
-        ::g3_route_transitions::RouteTransitionLayer::Root,) => return
-        ::g3_route_transitions::NavigationAnimation::PushRight, _ => {} } if let
-        Some(ordering) = self.transition_push_ordering_to(next) { return match ordering {
+        self, next : &# enum_ident,) -> ::g3_route_transitions::NavigationTransition { if
+        self == next { return ::g3_route_transitions::NavigationTransition::None; } if self
+        .__g3_route_transition_is_forward_to(next) { return
+        ::g3_route_transitions::NavigationTransition::Forward; } if next
+        .__g3_route_transition_is_forward_to(self) { return
+        ::g3_route_transitions::NavigationTransition::Backward; } if self
+        .__g3_route_transition_hands_off_to(next) { return match next.__g3_route_transition_layer() {
+        ::g3_route_transitions::RouteTransitionLayer::Sheet => {
+        ::g3_route_transitions::NavigationTransition::PresentSheet }
+        ::g3_route_transitions::RouteTransitionLayer::StackPage => {
+        ::g3_route_transitions::NavigationTransition::Forward }
+        _ => ::g3_route_transitions::NavigationTransition::CrossFade, }; } match (self
+        .__g3_route_transition_layer(), next.__g3_route_transition_layer()) { (current,
+        ::g3_route_transitions::RouteTransitionLayer::Sheet,) if current !=
+        ::g3_route_transitions::RouteTransitionLayer::Sheet => { return
+        ::g3_route_transitions::NavigationTransition::PresentSheet },
+        (::g3_route_transitions::RouteTransitionLayer::Sheet, next,) if next !=
+        ::g3_route_transitions::RouteTransitionLayer::Sheet => { return
+        ::g3_route_transitions::NavigationTransition::DismissSheet },
+        (::g3_route_transitions::RouteTransitionLayer::StackRoot,
+        ::g3_route_transitions::RouteTransitionLayer::StackPage,) => return
+        ::g3_route_transitions::NavigationTransition::Forward,
+        (::g3_route_transitions::RouteTransitionLayer::StackPage,
+        ::g3_route_transitions::RouteTransitionLayer::StackRoot,) => return
+        ::g3_route_transitions::NavigationTransition::Backward, _ => {} } if let
+        Some(ordering) = self.__g3_route_transition_peer_ordering_to(next) { return match ordering {
         std::cmp::Ordering::Greater => {
-        ::g3_route_transitions::NavigationAnimation::PushLeft } std::cmp::Ordering::Less
-        => { ::g3_route_transitions::NavigationAnimation::PushRight }
-        std::cmp::Ordering::Equal => { ::g3_route_transitions::NavigationAnimation::None
-        } }; } if self.transition_replaces_to(next) { return
-        ::g3_route_transitions::NavigationAnimation::None; }
-        ::g3_route_transitions::NavigationAnimation::Fade } fn replaces_history(&
-        self, next : &# enum_ident) -> bool { self.transition_replaces_to(next) || self
-        .transition_hands_off_to(next) } fn
-        transition_back(& self) -> ::g3_route_transitions::NavigationAnimation { match
-        self.transition_layer() { ::g3_route_transitions::RouteTransitionLayer::Cover =>
-        { ::g3_route_transitions::NavigationAnimation::UncoverDown }
-        ::g3_route_transitions::RouteTransitionLayer::Pushed => {
-        ::g3_route_transitions::NavigationAnimation::PushRight }
-        ::g3_route_transitions::RouteTransitionLayer::Morph => {
-        ::g3_route_transitions::NavigationAnimation::MorphOut } _ =>
-        ::g3_route_transitions::NavigationAnimation::Fade, } } }
+        ::g3_route_transitions::NavigationTransition::Forward } std::cmp::Ordering::Less
+        => { ::g3_route_transitions::NavigationTransition::Backward }
+        std::cmp::Ordering::Equal => { ::g3_route_transitions::NavigationTransition::None
+        } }; } if self.__g3_route_transition_replaces_history_to(next) { return
+        ::g3_route_transitions::NavigationTransition::None; }
+        ::g3_route_transitions::NavigationTransition::CrossFade } fn replaces_history(&
+        self, next : &# enum_ident) -> bool { self.__g3_route_transition_replaces_history_to(next) || self
+        .__g3_route_transition_hands_off_to(next) } fn
+        transition_back(& self) -> ::g3_route_transitions::NavigationTransition { match
+        self.__g3_route_transition_layer() { ::g3_route_transitions::RouteTransitionLayer::Sheet =>
+        { ::g3_route_transitions::NavigationTransition::DismissSheet }
+        ::g3_route_transitions::RouteTransitionLayer::StackPage => {
+        ::g3_route_transitions::NavigationTransition::Backward }
+        _ => ::g3_route_transitions::NavigationTransition::CrossFade, } } }
     }
     .into()
 }
-fn take_transition_attr(variant: &mut syn::Variant) -> Result<Option<TransitionArgs>> {
+fn parse_transition_attr(variant: &syn::Variant) -> Result<Option<TransitionArgs>> {
     let mut transition = None;
-    let mut attrs = Vec::new();
-    for attr in variant.attrs.drain(..) {
+    for attr in &variant.attrs {
         if attr.path().is_ident("transition") {
             if transition.is_some() {
                 return Err(Error::new_spanned(attr, "duplicate transition attribute"));
             }
             transition = Some(attr.parse_args::<TransitionArgs>()?);
-        } else {
-            attrs.push(attr);
         }
     }
-    variant.attrs = attrs;
     Ok(transition)
 }
 fn build_layer_arms(
@@ -203,24 +247,19 @@ fn build_layer_arms(
                         ::g3_route_transitions::RouteTransitionLayer::Base
                     }
                 }
-                RouteLayer::Cover => {
+                RouteLayer::Sheet => {
                     quote! {
-                        ::g3_route_transitions::RouteTransitionLayer::Cover
+                        ::g3_route_transitions::RouteTransitionLayer::Sheet
                     }
                 }
-                RouteLayer::Morph => {
+                RouteLayer::StackRoot => {
                     quote! {
-                        ::g3_route_transitions::RouteTransitionLayer::Morph
+                        ::g3_route_transitions::RouteTransitionLayer::StackRoot
                     }
                 }
-                RouteLayer::Root => {
+                RouteLayer::StackPage => {
                     quote! {
-                        ::g3_route_transitions::RouteTransitionLayer::Root
-                    }
-                }
-                RouteLayer::Pushed => {
-                    quote! {
-                        ::g3_route_transitions::RouteTransitionLayer::Pushed
+                        ::g3_route_transitions::RouteTransitionLayer::StackPage
                     }
                 }
             };
@@ -241,13 +280,19 @@ fn build_forward_arms(
     let mut arms = Vec::new();
     for from in route_variants {
         let from_pattern = build_layer_pattern(enum_ident, &from.ident, &from.fields)?;
-        for target in &from.transition.forward {
+        for target in &from.transition.forward_to {
             let Some(to) = variants_by_name.get(&target.to_string()) else {
                 return Err(Error::new_spanned(
                     target,
-                    "forward transition target is not a route variant",
+                    "forward_to target is not a route variant",
                 ));
             };
+            if to.ident == from.ident {
+                return Err(Error::new_spanned(
+                    target,
+                    "a route cannot move forward to itself; use `peers(...)` to order values of one variant",
+                ));
+            }
             let to_pattern = build_layer_pattern(enum_ident, &to.ident, &to.fields)?;
             arms.push(quote! {
                 (# from_pattern, # to_pattern) => true
@@ -262,10 +307,10 @@ fn build_replace_arms(
 ) -> Result<Vec<TokenStream2>> {
     let mut arms = Vec::new();
     for variant in route_variants {
-        let Some(replace) = &variant.transition.replace else {
+        let Some(replace) = &variant.transition.history_replace else {
             continue;
         };
-        validate_named_fields(variant, replace.key.iter().collect(), "replace")?;
+        validate_named_fields(variant, replace.key.iter().collect(), "history replacement")?;
         if replace.key.is_empty() {
             let from = build_layer_pattern(enum_ident, &variant.ident, &variant.fields)?;
             let to = build_layer_pattern(enum_ident, &variant.ident, &variant.fields)?;
@@ -304,17 +349,17 @@ fn build_hand_off_arms(
     let mut arms = Vec::new();
     for to in route_variants {
         let to_pattern = build_layer_pattern(enum_ident, &to.ident, &to.fields)?;
-        for source in &to.transition.replaces {
+        for source in &to.transition.handoff_from {
             let Some(from) = variants_by_name.get(&source.to_string()) else {
                 return Err(Error::new_spanned(
                     source,
-                    "replaces target is not a route variant",
+                    "handoff_from source is not a route variant",
                 ));
             };
             if from.ident == to.ident {
                 return Err(Error::new_spanned(
                     source,
-                    "a route cannot replace itself; use `replace` for same-variant updates",
+                    "a route cannot hand off from itself; use `history = replace` for same-variant updates",
                 ));
             }
             let from_pattern = build_layer_pattern(enum_ident, &from.ident, &from.fields)?;
@@ -325,16 +370,16 @@ fn build_hand_off_arms(
     }
     Ok(arms)
 }
-fn build_push_ordering_arms(
+fn build_peer_ordering_arms(
     enum_ident: &Ident,
     route_variants: &[RouteVariant],
 ) -> Result<Vec<TokenStream2>> {
     let mut groups: BTreeMap<String, Vec<&RouteVariant>> = BTreeMap::new();
     for variant in route_variants {
-        if let Some(push) = &variant.transition.push {
-            validate_push_fields(variant, push)?;
+        if let Some(peers) = &variant.transition.peers {
+            validate_peer_fields(variant, peers)?;
             groups
-                .entry(push.group.to_string())
+                .entry(peers.group.to_string())
                 .or_default()
                 .push(variant);
         }
@@ -343,14 +388,18 @@ fn build_push_ordering_arms(
     for variants in groups.values() {
         for from in variants {
             for to in variants {
-                let from_push = from.transition.push.as_ref().expect("grouped push variant");
-                let to_push = to.transition.push.as_ref().expect("grouped push variant");
-                let from_aliases = FieldAliases::new("__route_transition_from", from_push);
-                let to_aliases = FieldAliases::new("__route_transition_to", to_push);
+                let from_peers = from
+                    .transition
+                    .peers
+                    .as_ref()
+                    .expect("grouped peer variant");
+                let to_peers = to.transition.peers.as_ref().expect("grouped peer variant");
+                let from_aliases = FieldAliases::new("__route_transition_from", from_peers);
+                let to_aliases = FieldAliases::new("__route_transition_to", to_peers);
                 let from_pattern =
-                    build_push_pattern(enum_ident, &from.ident, &from.fields, &from_aliases)?;
+                    build_peer_pattern(enum_ident, &from.ident, &from.fields, &from_aliases)?;
                 let to_pattern =
-                    build_push_pattern(enum_ident, &to.ident, &to.fields, &to_aliases)?;
+                    build_peer_pattern(enum_ident, &to.ident, &to.fields, &to_aliases)?;
                 let key_guard = build_key_guard(&from_aliases, &to_aliases);
                 let from_order = from_aliases.order_alias();
                 let to_order = to_aliases.order_alias();
@@ -363,8 +412,8 @@ fn build_push_ordering_arms(
     }
     Ok(arms)
 }
-fn validate_push_fields(variant: &RouteVariant, push: &PushArgs) -> Result<()> {
-    validate_named_fields(variant, push.used_fields(), "push")
+fn validate_peer_fields(variant: &RouteVariant, peers: &PeerArgs) -> Result<()> {
+    validate_named_fields(variant, peers.used_fields(), "peers")
 }
 fn validate_named_fields(
     variant: &RouteVariant,
@@ -427,7 +476,7 @@ fn build_key_pattern(
         }
         Fields::Unnamed(_) | Fields::Unit => Err(Error::new_spanned(
             variant_ident,
-            "keyed replace transitions require named route fields",
+            "keyed history replacement requires named route fields",
         )),
     }
 }
@@ -449,7 +498,7 @@ fn build_layer_pattern(
         }),
     }
 }
-fn build_push_pattern(
+fn build_peer_pattern(
     enum_ident: &Ident,
     variant_ident: &Ident,
     fields: &Fields,
@@ -468,7 +517,7 @@ fn build_push_pattern(
         )),
         Fields::Unit => Err(Error::new_spanned(
             variant_ident,
-            "push transitions require named route fields",
+            "ordered peer transitions require named route fields",
         )),
     }
 }
@@ -502,54 +551,80 @@ struct RouteVariant {
 #[derive(Clone)]
 struct TransitionArgs {
     layer: RouteLayer,
-    push: Option<PushArgs>,
-    forward: Vec<Ident>,
-    replace: Option<ReplaceArgs>,
-    replaces: Vec<Ident>,
+    peers: Option<PeerArgs>,
+    forward_to: Vec<Ident>,
+    history_replace: Option<ReplaceHistoryArgs>,
+    handoff_from: Vec<Ident>,
 }
 impl Default for TransitionArgs {
     fn default() -> Self {
         Self {
             layer: RouteLayer::Base,
-            push: None,
-            forward: Vec::new(),
-            replace: None,
-            replaces: Vec::new(),
+            peers: None,
+            forward_to: Vec::new(),
+            history_replace: None,
+            handoff_from: Vec::new(),
         }
     }
 }
 impl Parse for TransitionArgs {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut args = Self::default();
+        let mut seen = BTreeSet::new();
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
+            if !seen.insert(ident.to_string()) {
+                return Err(Error::new_spanned(
+                    &ident,
+                    format!("duplicate transition argument `{ident}`"),
+                ));
+            }
             match ident.to_string().as_str() {
-                "base" => args.layer = RouteLayer::Base,
-                "cover" => args.layer = RouteLayer::Cover,
-                "morph" => args.layer = RouteLayer::Morph,
-                "root" => args.layer = RouteLayer::Root,
-                "pushed" => args.layer = RouteLayer::Pushed,
-                "push" => {
+                "layer" => {
+                    input.parse::<Token![=]>()?;
+                    let layer: Ident = input.parse()?;
+                    args.layer = match layer.to_string().as_str() {
+                        "base" => RouteLayer::Base,
+                        "sheet" => RouteLayer::Sheet,
+                        "stack_root" => RouteLayer::StackRoot,
+                        "stack_page" => RouteLayer::StackPage,
+                        _ => {
+                            return Err(Error::new_spanned(
+                                layer,
+                                "unknown transition layer; expected base, stack_root, stack_page, or sheet",
+                            ));
+                        }
+                    };
+                }
+                "peers" => {
                     let content;
                     parenthesized!(content in input);
-                    args.push = Some(content.parse()?);
+                    args.peers = Some(content.parse()?);
                 }
-                "forward" => {
+                "forward_to" => {
                     input.parse::<Token![=]>()?;
-                    args.forward = parse_ident_list(input)?;
+                    args.forward_to = parse_ident_list(input)?;
                 }
-                "replace" => {
-                    args.replace = if input.peek(syn::token::Paren) {
+                "history" => {
+                    input.parse::<Token![=]>()?;
+                    let action: Ident = input.parse()?;
+                    if action != "replace" {
+                        return Err(Error::new_spanned(
+                            action,
+                            "unknown history action; expected replace",
+                        ));
+                    }
+                    args.history_replace = if input.peek(syn::token::Paren) {
                         let content;
                         parenthesized!(content in input);
                         Some(content.parse()?)
                     } else {
-                        Some(ReplaceArgs::default())
+                        Some(ReplaceHistoryArgs::default())
                     };
                 }
-                "replaces" => {
+                "handoff_from" => {
                     input.parse::<Token![=]>()?;
-                    args.replaces = parse_ident_list(input)?;
+                    args.handoff_from = parse_ident_list(input)?;
                 }
                 _ => return Err(Error::new_spanned(ident, "unknown transition argument")),
             }
@@ -563,20 +638,22 @@ impl Parse for TransitionArgs {
 #[derive(Clone, Copy)]
 enum RouteLayer {
     Base,
-    Cover,
-    Morph,
-    Root,
-    Pushed,
+    Sheet,
+    StackRoot,
+    StackPage,
 }
 #[derive(Clone, Default)]
-struct ReplaceArgs {
+struct ReplaceHistoryArgs {
     key: Vec<Ident>,
 }
-impl Parse for ReplaceArgs {
+impl Parse for ReplaceHistoryArgs {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let name: Ident = input.parse()?;
         if name != "key" {
-            return Err(Error::new_spanned(name, "unknown replace argument"));
+            return Err(Error::new_spanned(
+                name,
+                "unknown history replacement argument",
+            ));
         }
         input.parse::<Token![=]>()?;
         let key = parse_key(input)?;
@@ -584,18 +661,18 @@ impl Parse for ReplaceArgs {
             input.parse::<Token![,]>()?;
         }
         if !input.is_empty() {
-            return Err(input.error("replace accepts only a key argument"));
+            return Err(input.error("history replacement accepts only a key argument"));
         }
         Ok(Self { key })
     }
 }
 #[derive(Clone)]
-struct PushArgs {
+struct PeerArgs {
     group: Ident,
     key: Vec<Ident>,
     order: Ident,
 }
-impl PushArgs {
+impl PeerArgs {
     fn used_fields(&self) -> Vec<&Ident> {
         let mut fields = self.key.iter().collect::<Vec<_>>();
         if !fields.contains(&&self.order) {
@@ -604,28 +681,35 @@ impl PushArgs {
         fields
     }
 }
-impl Parse for PushArgs {
+impl Parse for PeerArgs {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut group = None;
         let mut key = Vec::new();
         let mut order = None;
+        let mut seen = BTreeSet::new();
         while !input.is_empty() {
             let name: Ident = input.parse()?;
             input.parse::<Token![=]>()?;
+            if !seen.insert(name.to_string()) {
+                return Err(Error::new_spanned(
+                    &name,
+                    format!("duplicate peers argument `{name}`"),
+                ));
+            }
             match name.to_string().as_str() {
                 "group" => group = Some(input.parse()?),
                 "key" => key = parse_key(input)?,
                 "order" => order = Some(input.parse()?),
-                _ => return Err(Error::new_spanned(name, "unknown push argument")),
+                _ => return Err(Error::new_spanned(name, "unknown peers argument")),
             }
             if input.peek(Token![,]) {
                 input.parse::<Token![,]>()?;
             }
         }
         Ok(Self {
-            group: group.ok_or_else(|| input.error("missing push group"))?,
+            group: group.ok_or_else(|| input.error("missing peers group"))?,
             key,
-            order: order.ok_or_else(|| input.error("missing push order"))?,
+            order: order.ok_or_else(|| input.error("missing peers order"))?,
         })
     }
 }
@@ -656,10 +740,10 @@ struct FieldAliases {
     key_len: usize,
 }
 impl FieldAliases {
-    fn new(prefix: &str, push: &PushArgs) -> Self {
-        let mut fields = push.key.clone();
-        if !fields.iter().any(|field| field == &push.order) {
-            fields.push(push.order.clone());
+    fn new(prefix: &str, peers: &PeerArgs) -> Self {
+        let mut fields = peers.key.clone();
+        if !fields.iter().any(|field| field == &peers.order) {
+            fields.push(peers.order.clone());
         }
         let aliases = fields
             .into_iter()
@@ -670,7 +754,7 @@ impl FieldAliases {
             .collect();
         Self {
             aliases,
-            key_len: push.key.len(),
+            key_len: peers.key.len(),
         }
     }
     fn bindings(&self) -> Vec<TokenStream2> {
