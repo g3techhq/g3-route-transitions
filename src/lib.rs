@@ -195,7 +195,7 @@ pub const ROUTE_TRANSITION_PAGE_CLASS: &str = "route-transition-page";
 /// Class applied by [`RouteTransitionPersistent`].
 ///
 /// The element is always named `persistent` and never animates. It paints
-/// above every other snapshot, including a rising sheet. If only one of the two
+/// above page snapshots and below a routed sheet. If only one of the two
 /// routes renders it, it fades in or out instead. The stylesheet applies no
 /// layout to it. Libraries that only want this behavior at some breakpoints
 /// can set `view-transition-name: persistent` themselves instead of using the
@@ -275,8 +275,8 @@ pub fn RouteTransitionPage(children: Element, class: Option<String>) -> Element 
 /// Chrome that stays exactly where it is during every transition, such as a
 /// desktop navigation rail beside the page.
 ///
-/// It is captured on its own and painted above everything else, so it doesn't
-/// slide with the page, dim under a sheet, or get covered by a rising sheet.
+/// It is captured on its own and painted above page snapshots, so it doesn't
+/// slide with the page or dim under a sheet. Routed sheets paint above it.
 /// For it to stay still, the routes on both sides of a transition must
 /// render it in the same place, including sheet routes. If only one side
 /// renders it, it fades. Render at most one at a time.
@@ -1069,10 +1069,10 @@ mod tests {
         assert!(production_source.contains("pub fn RouteTransitionPersistent"));
         assert!(production_source.contains("merge_transition_class"));
     }
-    /// Persistent chrome never moves, sits above a rising sheet, and fades
-    /// instead of popping when only one route renders it.
+    /// Persistent chrome never moves, stays above page pushes but below routed
+    /// sheets, and fades instead of popping when only one route renders it.
     #[test]
-    fn persistent_chrome_is_static_above_every_snapshot() {
+    fn persistent_chrome_is_static_and_sheets_cover_it() {
         let stylesheet = include_str!("../assets/route_transitions.css");
         let rule = |selector: &str| {
             stylesheet
@@ -1086,6 +1086,12 @@ mod tests {
         let group = rule("html[data-route-transition]::view-transition-group(persistent)");
         assert!(group.contains("animation: none"));
         assert!(group.contains("z-index: 10000"));
+        for transition in ["present-sheet", "dismiss-sheet"] {
+            let selector = format!(
+                "html[data-route-transition=\"{transition}\"]::view-transition-group(persistent)"
+            );
+            assert!(rule(&selector).contains("z-index: 9998"));
+        }
         assert!(
             rule("html[data-route-transition]::view-transition-old(persistent):only-child")
                 .contains("route-transition-fade-out")
