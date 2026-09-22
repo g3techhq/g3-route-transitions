@@ -1,16 +1,13 @@
 :root {
-    --route-transition-cover-duration: 0.6s;
-    --route-transition-push-duration: 260ms;
+    --route-transition-sheet-duration: 0.6s;
+    --route-transition-stack-duration: 260ms;
     --route-transition-fade-duration: 150ms;
-    --route-transition-morph-duration: 350ms;
-    --route-transition-morph-dismiss-duration: 240ms;
-    --route-transition-md-sheet-dismiss-duration: 280ms;
+    --route-transition-material-sheet-dismiss-duration: 280ms;
     --route-transition-ios-ease: cubic-bezier(0.4, 0, 0.2, 1);
-    --route-transition-md-decelerate: cubic-bezier(0.1, 0.7, 0.1, 1);
-    --route-transition-md-accelerate: cubic-bezier(0.3, 0, 0.8, 0.2);
-    --route-transition-md-push-ease: cubic-bezier(0.4, 0, 0.2, 1);
-    --route-transition-md-shared-axis-distance: 30px;
-    --route-transition-dismiss-ease: cubic-bezier(0.4, 0, 1, 1);
+    --route-transition-material-decelerate: cubic-bezier(0.1, 0.7, 0.1, 1);
+    --route-transition-material-accelerate: cubic-bezier(0.3, 0, 0.8, 0.2);
+    --route-transition-material-spatial-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --route-transition-material-shared-axis-distance: 30px;
     --route-transition-ios-presentation-backdrop: color-mix(
         in srgb,
         var(--route-transition-surface-bg, var(--route-transition-bg, var(--color-bg, Canvas))) 72%,
@@ -19,17 +16,15 @@
     /* A segment slide is a filmstrip, not a page push: both panes travel the
        full width locked together, so they need one shared curve rather than
        the accelerate/decelerate pair a page push uses. */
-    --route-transition-segment-duration: var(--route-transition-push-duration);
+    --route-transition-segment-duration: var(--route-transition-stack-duration);
     --route-transition-segment-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-html[data-route-transition-platform="md"] {
-    --route-transition-cover-duration: 400ms;
-    --route-transition-push-duration: 300ms;
+html[data-route-transition-platform="material"] {
+    --route-transition-sheet-duration: 400ms;
+    --route-transition-stack-duration: 300ms;
     --route-transition-fade-duration: 150ms;
-    --route-transition-morph-duration: 300ms;
-    --route-transition-morph-dismiss-duration: 250ms;
-    --route-transition-md-sheet-dismiss-duration: 350ms;
+    --route-transition-material-sheet-dismiss-duration: 350ms;
 }
 
 html,
@@ -39,9 +34,9 @@ body {
 }
 
 /* Named snapshots live in a document-level pseudo tree, outside any app-shell
-   theme or clipping context. The runtime copies the outgoing document and
-   route-surface colors to <html> before capture so an embedded demo keeps its
-   dark stage and an iOS sheet never reveals a white canvas behind a dark page. */
+   theme or clipping context. The runtime copies the document and route-surface
+   colors to <html> as each side renders so an embedded demo keeps its dark
+   stage and an iOS sheet never reveals a white canvas behind a dark page. */
 html[data-route-transition]::view-transition {
     background: var(
         --route-transition-document-bg,
@@ -49,7 +44,7 @@ html[data-route-transition]::view-transition {
     );
 }
 
-.route-transition-base {
+.route-transition-base-region {
     view-transition-name: base;
     display: flex;
     flex-direction: column;
@@ -57,7 +52,7 @@ html[data-route-transition]::view-transition {
     background: var(--route-transition-bg, var(--color-bg, #f8f8f8));
     isolation: isolate;
 }
-.route-transition-cover {
+.route-transition-overlay-region {
     display: flex;
     flex-direction: column;
     min-height: 100dvh;
@@ -82,72 +77,104 @@ html[data-route-transition]::view-transition {
 /* A full-page snapshot owns motion inside its subtree. Nested markers remain
    available everywhere else for applications that use the original
    base/segment layout. */
-.route-transition-page > .route-transition-base {
+.route-transition-page > .route-transition-base-region {
     view-transition-name: none;
 }
 
-html[data-route-transition="push-left"] .route-transition-page,
-html[data-route-transition="push-right"] .route-transition-page,
-html[data-route-transition="cover-up"] .route-transition-page,
-html[data-route-transition="uncover-down"] .route-transition-page,
-html[data-route-transition="morph-in"] .route-transition-page,
-html[data-route-transition="morph-out"] .route-transition-page {
+html[data-route-transition="forward"] .route-transition-page,
+html[data-route-transition="backward"] .route-transition-page,
+html[data-route-transition="present-sheet"] .route-transition-page,
+html[data-route-transition="dismiss-sheet"] .route-transition-page {
     view-transition-name: page;
     contain: layout paint;
 }
 
-html[data-route-transition="push-left"] .route-transition-page .route-transition-segment,
-html[data-route-transition="push-right"] .route-transition-page .route-transition-segment {
+html[data-route-transition="forward"] .route-transition-page .route-transition-segment,
+html[data-route-transition="backward"] .route-transition-page .route-transition-segment {
     view-transition-name: none;
     contain: none;
 }
 
-html[data-route-transition="cover-up"] .route-transition-cover,
-html[data-route-transition="uncover-down"] .route-transition-cover {
-    view-transition-name: cover;
+html[data-route-transition="present-sheet"] .route-transition-overlay-region,
+html[data-route-transition="dismiss-sheet"] .route-transition-overlay-region {
+    view-transition-name: overlay;
     contain: layout paint;
 }
 
-html[data-route-transition="push-left"] .route-transition-segment,
-html[data-route-transition="push-right"] .route-transition-segment {
+html[data-route-transition="forward"] .route-transition-segment,
+html[data-route-transition="backward"] .route-transition-segment {
     view-transition-name: segment;
     contain: layout paint;
 }
 
-html[data-route-transition="cover-up"]::view-transition-group(cover),
-html[data-route-transition="uncover-down"]::view-transition-group(cover) {
+html[data-route-transition="present-sheet"]::view-transition-group(overlay),
+html[data-route-transition="dismiss-sheet"]::view-transition-group(overlay) {
     z-index: 9999;
 }
+
+/* Persistent chrome - a desktop navigation rail, for instance - sits outside
+   every transition. It is captured on its own, so it neither moves with the
+   page nor dims under a sheet. It paints above page pushes, but below a routed
+   sheet so the sheet cannot appear to slip behind the rail while dismissing.
+   When both routes render it, the new image simply replaces the old one in
+   place. When only one side renders it, it fades rather than popping. */
+.route-transition-persistent {
+    view-transition-name: persistent;
+}
+
+html[data-route-transition]::view-transition-group(persistent) {
+    animation: none;
+    z-index: 10000;
+}
+
+html[data-route-transition="present-sheet"]::view-transition-group(persistent) {
+    z-index: 9998;
+}
+
+html[data-route-transition="dismiss-sheet"]::view-transition-group(persistent) {
+    z-index: 9998;
+}
+
+html[data-route-transition]::view-transition-old(persistent),
+html[data-route-transition]::view-transition-new(persistent) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+html[data-route-transition]::view-transition-old(persistent):not(:only-child) {
+    opacity: 0;
+}
+
+html[data-route-transition]::view-transition-old(persistent):only-child {
+    animation: route-transition-fade-out var(--route-transition-fade-duration) var(--route-transition-ios-ease) both;
+}
+
+html[data-route-transition]::view-transition-new(persistent):only-child {
+    animation: route-transition-persistent-fade-in var(--route-transition-fade-duration) var(--route-transition-ios-ease) both;
+}
+
+@keyframes route-transition-persistent-fade-in { from { opacity: 0; } }
 
 /* A live ancestor's overflow cannot clip document-level transition images.
    Clip every spatial snapshot at its captured bounds instead. This keeps page
    pushes inside an embedded phone and prevents a sheet from painting over the
    surrounding site while it enters or exits. */
-html[data-route-transition="push-left"]::view-transition-group(page),
-html[data-route-transition="push-right"]::view-transition-group(page),
-html[data-route-transition="push-left"]::view-transition-image-pair(page),
-html[data-route-transition="push-right"]::view-transition-image-pair(page),
-html[data-route-transition="cover-up"]::view-transition-group(cover),
-html[data-route-transition="uncover-down"]::view-transition-group(cover),
-html[data-route-transition="cover-up"]::view-transition-image-pair(cover),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(cover),
-html[data-route-transition="cover-up"]::view-transition-group(base),
-html[data-route-transition="uncover-down"]::view-transition-group(base),
-html[data-route-transition="cover-up"]::view-transition-image-pair(base),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(base),
-html[data-route-transition="cover-up"]::view-transition-group(page),
-html[data-route-transition="uncover-down"]::view-transition-group(page),
-html[data-route-transition="cover-up"]::view-transition-image-pair(page),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
-    overflow: hidden;
-    border-radius: var(--route-transition-clip-radius, 0px);
-    clip-path: inset(0 round var(--route-transition-clip-radius, 0px));
-}
-
-html[data-route-transition="morph-in"]::view-transition-group(page),
-html[data-route-transition="morph-out"]::view-transition-group(page),
-html[data-route-transition="morph-in"]::view-transition-image-pair(page),
-html[data-route-transition="morph-out"]::view-transition-image-pair(page) {
+html[data-route-transition="forward"]::view-transition-group(page),
+html[data-route-transition="backward"]::view-transition-group(page),
+html[data-route-transition="forward"]::view-transition-image-pair(page),
+html[data-route-transition="backward"]::view-transition-image-pair(page),
+html[data-route-transition="present-sheet"]::view-transition-group(overlay),
+html[data-route-transition="dismiss-sheet"]::view-transition-group(overlay),
+html[data-route-transition="present-sheet"]::view-transition-image-pair(overlay),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(overlay),
+html[data-route-transition="present-sheet"]::view-transition-group(base),
+html[data-route-transition="dismiss-sheet"]::view-transition-group(base),
+html[data-route-transition="present-sheet"]::view-transition-image-pair(base),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(base),
+html[data-route-transition="present-sheet"]::view-transition-group(page),
+html[data-route-transition="dismiss-sheet"]::view-transition-group(page),
+html[data-route-transition="present-sheet"]::view-transition-image-pair(page),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(page) {
     overflow: hidden;
     border-radius: var(--route-transition-clip-radius, 0px);
     clip-path: inset(0 round var(--route-transition-clip-radius, 0px));
@@ -155,13 +182,13 @@ html[data-route-transition="morph-out"]::view-transition-image-pair(page) {
 
 /* Scaling the old iOS page exposes the stationary image-pair behind it. Give
    that pair the resolved app surface color instead of the browser's white
-   default. The cover pair stays transparent so modal scrims keep working. */
-html[data-route-transition="push-left"]::view-transition-image-pair(page),
-html[data-route-transition="push-right"]::view-transition-image-pair(page),
-html[data-route-transition="cover-up"]::view-transition-image-pair(base),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(base),
-html[data-route-transition="cover-up"]::view-transition-image-pair(page),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
+   default. The overlay pair stays transparent so sheet scrims keep working. */
+html[data-route-transition="forward"]::view-transition-image-pair(page),
+html[data-route-transition="backward"]::view-transition-image-pair(page),
+html[data-route-transition="present-sheet"]::view-transition-image-pair(base),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(base),
+html[data-route-transition="present-sheet"]::view-transition-image-pair(page),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(page) {
     background: var(
         --route-transition-surface-bg,
         var(--route-transition-bg, var(--color-bg, Canvas))
@@ -171,76 +198,89 @@ html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
 /* UIKit presents a sheet over a dimming view. When the presenting page scales
    down, the newly exposed area should therefore match that dimmed page rather
    than reveal the host document or the undimmed app surface. */
-html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-image-pair(base),
-html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-image-pair(page),
-html[data-route-transition-platform="ios"][data-route-transition="uncover-down"]::view-transition-image-pair(base),
-html[data-route-transition-platform="ios"][data-route-transition="uncover-down"]::view-transition-image-pair(page) {
+html[data-route-transition-platform="ios"][data-route-transition="present-sheet"]::view-transition-image-pair(base),
+html[data-route-transition-platform="ios"][data-route-transition="present-sheet"]::view-transition-image-pair(page) {
     background: var(--route-transition-ios-presentation-backdrop);
 }
 
-html[data-route-transition="cover-up"]::view-transition-group(base),
-html[data-route-transition="uncover-down"]::view-transition-group(base) {
+/* A sheet dismissal's base snapshot belongs to the incoming route. Its theme can
+   differ from the outgoing sheet, so use the color captured after navigation
+   instead of carrying the sheet's light surface into a dark-mode dismissal. */
+html[data-route-transition-platform="ios"][data-route-transition="dismiss-sheet"]::view-transition-image-pair(base),
+html[data-route-transition-platform="ios"][data-route-transition="dismiss-sheet"]::view-transition-image-pair(page) {
+    background: color-mix(
+        in srgb,
+        var(
+            --route-transition-incoming-surface-bg,
+            var(--route-transition-surface-bg, var(--route-transition-bg, var(--color-bg, Canvas)))
+        ) 72%,
+        black
+    );
+}
+
+html[data-route-transition="present-sheet"]::view-transition-group(base),
+html[data-route-transition="dismiss-sheet"]::view-transition-group(base) {
     z-index: 0;
 }
 
-html[data-route-transition="cover-up"]::view-transition-group(page),
-html[data-route-transition="uncover-down"]::view-transition-group(page) {
+html[data-route-transition="present-sheet"]::view-transition-group(page),
+html[data-route-transition="dismiss-sheet"]::view-transition-group(page) {
     z-index: 1;
 }
 
-html[data-route-transition="cover-up"]::view-transition-image-pair(cover),
-html[data-route-transition="cover-up"]::view-transition-image-pair(base),
-html[data-route-transition="cover-up"]::view-transition-image-pair(page),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(cover),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(base),
-html[data-route-transition="uncover-down"]::view-transition-image-pair(page) {
+html[data-route-transition="present-sheet"]::view-transition-image-pair(overlay),
+html[data-route-transition="present-sheet"]::view-transition-image-pair(base),
+html[data-route-transition="present-sheet"]::view-transition-image-pair(page),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(overlay),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(base),
+html[data-route-transition="dismiss-sheet"]::view-transition-image-pair(page) {
     image-rendering: crisp-edges;
     isolation: isolate;
     mix-blend-mode: normal;
 }
 
-html[data-route-transition="cover-up"]::view-transition-old(root),
-html[data-route-transition="cover-up"]::view-transition-new(root),
-html[data-route-transition="uncover-down"]::view-transition-old(root),
-html[data-route-transition="uncover-down"]::view-transition-new(root),
-html[data-route-transition="cover-up"]::view-transition-old(cover),
-html[data-route-transition="cover-up"]::view-transition-new(base),
-html[data-route-transition="cover-up"]::view-transition-new(page),
-html[data-route-transition="uncover-down"]::view-transition-new(cover),
-html[data-route-transition="uncover-down"]::view-transition-old(base),
-html[data-route-transition="uncover-down"]::view-transition-old(page) {
+html[data-route-transition="present-sheet"]::view-transition-old(root),
+html[data-route-transition="present-sheet"]::view-transition-new(root),
+html[data-route-transition="dismiss-sheet"]::view-transition-old(root),
+html[data-route-transition="dismiss-sheet"]::view-transition-new(root),
+html[data-route-transition="present-sheet"]::view-transition-old(overlay),
+html[data-route-transition="present-sheet"]::view-transition-new(base),
+html[data-route-transition="present-sheet"]::view-transition-new(page),
+html[data-route-transition="dismiss-sheet"]::view-transition-new(overlay),
+html[data-route-transition="dismiss-sheet"]::view-transition-old(base),
+html[data-route-transition="dismiss-sheet"]::view-transition-old(page) {
     animation: none;
     opacity: 0;
 }
 
-html[data-route-transition="cover-up"]::view-transition-old(base),
-html[data-route-transition="uncover-down"]::view-transition-new(base),
-html[data-route-transition="cover-up"]::view-transition-old(page),
-html[data-route-transition="uncover-down"]::view-transition-new(page) {
+html[data-route-transition="present-sheet"]::view-transition-old(base),
+html[data-route-transition="dismiss-sheet"]::view-transition-new(base),
+html[data-route-transition="present-sheet"]::view-transition-old(page),
+html[data-route-transition="dismiss-sheet"]::view-transition-new(page) {
     mix-blend-mode: normal;
     opacity: 1;
     z-index: 1;
 }
 
-html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-old(base),
-html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-old(page) {
-    animation: route-transition-ios-dim-base var(--route-transition-cover-duration) var(--route-transition-ios-ease) both;
+html[data-route-transition-platform="ios"][data-route-transition="present-sheet"]::view-transition-old(base),
+html[data-route-transition-platform="ios"][data-route-transition="present-sheet"]::view-transition-old(page) {
+    animation: route-transition-ios-dim-base var(--route-transition-sheet-duration) var(--route-transition-ios-ease) both;
 }
-html[data-route-transition-platform="ios"][data-route-transition="uncover-down"]::view-transition-new(base),
-html[data-route-transition-platform="ios"][data-route-transition="uncover-down"]::view-transition-new(page) {
-    animation: route-transition-ios-undim-base var(--route-transition-cover-duration) var(--route-transition-ios-ease) both;
+html[data-route-transition-platform="ios"][data-route-transition="dismiss-sheet"]::view-transition-new(base),
+html[data-route-transition-platform="ios"][data-route-transition="dismiss-sheet"]::view-transition-new(page) {
+    animation: route-transition-ios-undim-base var(--route-transition-sheet-duration) var(--route-transition-ios-ease) both;
 }
-html[data-route-transition-platform="md"][data-route-transition="cover-up"]::view-transition-old(base),
-html[data-route-transition-platform="md"][data-route-transition="cover-up"]::view-transition-old(page) {
-    animation: route-transition-md-dim-base var(--route-transition-cover-duration) linear both;
+html[data-route-transition-platform="material"][data-route-transition="present-sheet"]::view-transition-old(base),
+html[data-route-transition-platform="material"][data-route-transition="present-sheet"]::view-transition-old(page) {
+    animation: route-transition-material-dim-base var(--route-transition-sheet-duration) linear both;
 }
-html[data-route-transition-platform="md"][data-route-transition="uncover-down"]::view-transition-new(base),
-html[data-route-transition-platform="md"][data-route-transition="uncover-down"]::view-transition-new(page) {
-    animation: route-transition-md-undim-base var(--route-transition-md-sheet-dismiss-duration) linear both;
+html[data-route-transition-platform="material"][data-route-transition="dismiss-sheet"]::view-transition-new(base),
+html[data-route-transition-platform="material"][data-route-transition="dismiss-sheet"]::view-transition-new(page) {
+    animation: route-transition-material-undim-base var(--route-transition-material-sheet-dismiss-duration) linear both;
 }
 
-html[data-route-transition="cover-up"]::view-transition-new(cover),
-html[data-route-transition="uncover-down"]::view-transition-old(cover) {
+html[data-route-transition="present-sheet"]::view-transition-new(overlay),
+html[data-route-transition="dismiss-sheet"]::view-transition-old(overlay) {
     mix-blend-mode: normal;
     opacity: 1;
     z-index: 2;
@@ -248,23 +288,23 @@ html[data-route-transition="uncover-down"]::view-transition-old(cover) {
     transform: translateZ(0);
 }
 
-html[data-route-transition-platform="ios"][data-route-transition="cover-up"]::view-transition-new(cover) {
-    animation: route-transition-ios-slide-up-cover var(--route-transition-cover-duration) var(--route-transition-ios-ease) both;
+html[data-route-transition-platform="ios"][data-route-transition="present-sheet"]::view-transition-new(overlay) {
+    animation: route-transition-ios-slide-up-overlay var(--route-transition-sheet-duration) var(--route-transition-ios-ease) both;
     box-shadow: 0 -14px 20px -14px rgba(0, 0, 0, 0.38);
 }
-html[data-route-transition-platform="ios"][data-route-transition="uncover-down"]::view-transition-old(cover) {
-    animation: route-transition-ios-slide-down-cover var(--route-transition-cover-duration) var(--route-transition-ios-ease) both;
+html[data-route-transition-platform="ios"][data-route-transition="dismiss-sheet"]::view-transition-old(overlay) {
+    animation: route-transition-ios-slide-down-overlay var(--route-transition-sheet-duration) var(--route-transition-ios-ease) both;
     box-shadow: 0 -14px 20px -14px rgba(0, 0, 0, 0.38);
 }
-html[data-route-transition-platform="md"][data-route-transition="cover-up"]::view-transition-new(cover) {
-    animation: route-transition-md-slide-up-cover var(--route-transition-cover-duration) var(--route-transition-md-decelerate) both;
+html[data-route-transition-platform="material"][data-route-transition="present-sheet"]::view-transition-new(overlay) {
+    animation: route-transition-material-slide-up-overlay var(--route-transition-sheet-duration) var(--route-transition-material-decelerate) both;
 }
-html[data-route-transition-platform="md"][data-route-transition="uncover-down"]::view-transition-old(cover) {
-    animation: route-transition-md-slide-down-cover var(--route-transition-md-sheet-dismiss-duration) var(--route-transition-md-accelerate) both;
+html[data-route-transition-platform="material"][data-route-transition="dismiss-sheet"]::view-transition-old(overlay) {
+    animation: route-transition-material-slide-down-overlay var(--route-transition-material-sheet-dismiss-duration) var(--route-transition-material-accelerate) both;
 }
 
 /* iOS: page-sheet float. The base page scales down slightly and gains
-   rounded corners while it dims - UIKit's default modal presentation. */
+   rounded corners while it dims - UIKit's default sheet presentation. */
 @keyframes route-transition-ios-dim-base {
     from { filter: brightness(1); transform: scale(1); border-radius: 0; }
     to { filter: brightness(0.72); transform: scale(0.93); border-radius: 12px; }
@@ -273,62 +313,62 @@ html[data-route-transition-platform="md"][data-route-transition="uncover-down"]:
     from { filter: brightness(0.72); transform: scale(0.93); border-radius: 12px; }
     to { filter: brightness(1); transform: scale(1); border-radius: 0; }
 }
-/* Percentages are relative to the captured cover itself. Viewport units make
+/* Percentages are relative to the captured overlay itself. Viewport units make
    an embedded app wait below the host document's viewport before appearing. */
-@keyframes route-transition-ios-slide-up-cover {
+@keyframes route-transition-ios-slide-up-overlay {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
 }
-@keyframes route-transition-ios-slide-down-cover {
+@keyframes route-transition-ios-slide-down-overlay {
     from { transform: translateY(0); }
     to { transform: translateY(100%); }
 }
 
-/* Material 3 modal bottom-sheet window motion. M3's published resources move
+/* Material 3 bottom-sheet window motion. M3's published resources move
    the sheet 20% while fading it, using 400ms on enter and 350ms for the exit
    translation. The base stays put under a dimming scrim - no iOS-style
    scale/corner-round. Brightness stands in for a scrim because this crate
    does not own the host app's overlay color. */
-@keyframes route-transition-md-dim-base {
+@keyframes route-transition-material-dim-base {
     from { filter: brightness(1); }
     to { filter: brightness(0.6); }
 }
-@keyframes route-transition-md-undim-base {
+@keyframes route-transition-material-undim-base {
     from { filter: brightness(0.6); }
     to { filter: brightness(1); }
 }
-@keyframes route-transition-md-slide-up-cover {
+@keyframes route-transition-material-slide-up-overlay {
     from { transform: translateY(20%); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
-@keyframes route-transition-md-slide-down-cover {
+@keyframes route-transition-material-slide-down-overlay {
     from { transform: translateY(0); opacity: 1; }
     to { transform: translateY(20%); opacity: 0; }
 }
 
 
-html[data-route-transition="push-left"]::view-transition-old(root),
-html[data-route-transition="push-left"]::view-transition-new(root),
-html[data-route-transition="push-left"]::view-transition-old(base),
-html[data-route-transition="push-left"]::view-transition-new(base),
-html[data-route-transition="push-right"]::view-transition-old(root),
-html[data-route-transition="push-right"]::view-transition-new(root),
-html[data-route-transition="push-right"]::view-transition-old(base),
-html[data-route-transition="push-right"]::view-transition-new(base) {
+html[data-route-transition="forward"]::view-transition-old(root),
+html[data-route-transition="forward"]::view-transition-new(root),
+html[data-route-transition="forward"]::view-transition-old(base),
+html[data-route-transition="forward"]::view-transition-new(base),
+html[data-route-transition="backward"]::view-transition-old(root),
+html[data-route-transition="backward"]::view-transition-new(root),
+html[data-route-transition="backward"]::view-transition-old(base),
+html[data-route-transition="backward"]::view-transition-new(base) {
     animation: none;
 }
 
-html[data-route-transition="push-left"]::view-transition-old(page),
-html[data-route-transition="push-left"]::view-transition-new(page),
-html[data-route-transition="push-right"]::view-transition-old(page),
-html[data-route-transition="push-right"]::view-transition-new(page) {
-    animation-duration: var(--route-transition-push-duration);
+html[data-route-transition="forward"]::view-transition-old(page),
+html[data-route-transition="forward"]::view-transition-new(page),
+html[data-route-transition="backward"]::view-transition-old(page),
+html[data-route-transition="backward"]::view-transition-new(page) {
+    animation-duration: var(--route-transition-stack-duration);
     animation-fill-mode: both;
     mix-blend-mode: normal;
 }
 
-html[data-route-transition="push-left"]::view-transition-image-pair(page),
-html[data-route-transition="push-right"]::view-transition-image-pair(page) {
+html[data-route-transition="forward"]::view-transition-image-pair(page),
+html[data-route-transition="backward"]::view-transition-image-pair(page) {
     isolation: isolate;
     mix-blend-mode: normal;
 }
@@ -343,18 +383,18 @@ html[data-route-transition="push-right"]::view-transition-image-pair(page) {
    `::view-transition-old/new` `mix-blend-mode: plus-lighter` for smooth
    cross-fades; with two fully opaque panes sliding across each other that
    blend additively and read as one pane ghosting through the other. */
-html[data-route-transition="push-left"]::view-transition-old(segment),
-html[data-route-transition="push-left"]::view-transition-new(segment),
-html[data-route-transition="push-right"]::view-transition-old(segment),
-html[data-route-transition="push-right"]::view-transition-new(segment) {
+html[data-route-transition="forward"]::view-transition-old(segment),
+html[data-route-transition="forward"]::view-transition-new(segment),
+html[data-route-transition="backward"]::view-transition-old(segment),
+html[data-route-transition="backward"]::view-transition-new(segment) {
     animation-duration: var(--route-transition-segment-duration);
     animation-timing-function: var(--route-transition-segment-ease);
     animation-fill-mode: both;
     mix-blend-mode: normal;
 }
 
-html[data-route-transition="push-left"]::view-transition-image-pair(segment),
-html[data-route-transition="push-right"]::view-transition-image-pair(segment) {
+html[data-route-transition="forward"]::view-transition-image-pair(segment),
+html[data-route-transition="backward"]::view-transition-image-pair(segment) {
     isolation: isolate;
     mix-blend-mode: normal;
 }
@@ -362,24 +402,24 @@ html[data-route-transition="push-right"]::view-transition-image-pair(segment) {
 /* Full-width travel has to be clipped to the segment's own box, or the
    outgoing pane slides out across the header and tab bar - the view-transition
    pseudo tree paints above the page and the group is not clipped by default. */
-html[data-route-transition="push-left"]::view-transition-group(segment),
-html[data-route-transition="push-right"]::view-transition-group(segment),
-html[data-route-transition="push-left"]::view-transition-image-pair(segment),
-html[data-route-transition="push-right"]::view-transition-image-pair(segment) {
+html[data-route-transition="forward"]::view-transition-group(segment),
+html[data-route-transition="backward"]::view-transition-group(segment),
+html[data-route-transition="forward"]::view-transition-image-pair(segment),
+html[data-route-transition="backward"]::view-transition-image-pair(segment) {
     overflow: hidden;
     clip-path: inset(0);
 }
 
-html[data-route-transition="push-left"]::view-transition-old(segment) {
+html[data-route-transition="forward"]::view-transition-old(segment) {
     animation-name: route-transition-segment-out-left;
 }
-html[data-route-transition="push-left"]::view-transition-new(segment) {
+html[data-route-transition="forward"]::view-transition-new(segment) {
     animation-name: route-transition-segment-in-left;
 }
-html[data-route-transition="push-right"]::view-transition-old(segment) {
+html[data-route-transition="backward"]::view-transition-old(segment) {
     animation-name: route-transition-segment-out-right;
 }
-html[data-route-transition="push-right"]::view-transition-new(segment) {
+html[data-route-transition="backward"]::view-transition-new(segment) {
     animation-name: route-transition-segment-in-right;
 }
 
@@ -404,21 +444,21 @@ html[data-route-transition="push-right"]::view-transition-new(segment) {
    screen on push - it parallax-shifts partway off and dims, as if sliding
    back in the z-dimension under the incoming page; on pop that's reversed. */
 
-html[data-route-transition-platform="ios"][data-route-transition="push-left"]::view-transition-old(page) {
+html[data-route-transition-platform="ios"][data-route-transition="forward"]::view-transition-old(page) {
     animation-name: route-transition-ios-push-out-left;
     animation-timing-function: var(--route-transition-ios-ease);
 }
-html[data-route-transition-platform="ios"][data-route-transition="push-left"]::view-transition-new(page) {
+html[data-route-transition-platform="ios"][data-route-transition="forward"]::view-transition-new(page) {
     animation-name: route-transition-ios-push-in-left;
     animation-timing-function: var(--route-transition-ios-ease);
     z-index: 2;
 }
-html[data-route-transition-platform="ios"][data-route-transition="push-right"]::view-transition-old(page) {
+html[data-route-transition-platform="ios"][data-route-transition="backward"]::view-transition-old(page) {
     animation-name: route-transition-ios-push-out-right;
     animation-timing-function: var(--route-transition-ios-ease);
     z-index: 2;
 }
-html[data-route-transition-platform="ios"][data-route-transition="push-right"]::view-transition-new(page) {
+html[data-route-transition-platform="ios"][data-route-transition="backward"]::view-transition-new(page) {
     animation-name: route-transition-ios-push-in-right;
     animation-timing-function: var(--route-transition-ios-ease);
 }
@@ -438,54 +478,58 @@ html[data-route-transition-platform="ios"][data-route-transition="push-right"]::
    standard 30dp distance and use a sequential fade-through. Forward travels
    left and backward travels right. This deliberately differs from the iOS
    full-width foreground slide and parallax underlay above. */
-html[data-route-transition-platform="md"][data-route-transition="push-left"]::view-transition-old(page) {
-    animation-name: route-transition-md-axis-out-left;
-    animation-timing-function: var(--route-transition-md-push-ease);
+html[data-route-transition-platform="material"][data-route-transition="forward"]::view-transition-old(page) {
+    animation-name: route-transition-material-axis-out-left;
+    animation-timing-function: var(--route-transition-material-spatial-ease);
     z-index: 1;
 }
-html[data-route-transition-platform="md"][data-route-transition="push-left"]::view-transition-new(page) {
-    animation-name: route-transition-md-axis-in-left;
-    animation-timing-function: var(--route-transition-md-push-ease);
+html[data-route-transition-platform="material"][data-route-transition="forward"]::view-transition-new(page) {
+    animation-name: route-transition-material-axis-in-left;
+    animation-timing-function: var(--route-transition-material-spatial-ease);
     box-shadow: -16px 0 16px -16px rgba(0, 0, 0, 0.2);
     z-index: 2;
 }
-html[data-route-transition-platform="md"][data-route-transition="push-right"]::view-transition-old(page) {
-    animation-name: route-transition-md-axis-out-right;
-    animation-timing-function: var(--route-transition-md-push-ease);
+html[data-route-transition-platform="material"][data-route-transition="backward"]::view-transition-old(page) {
+    animation-name: route-transition-material-axis-out-right;
+    animation-timing-function: var(--route-transition-material-spatial-ease);
     box-shadow: -16px 0 16px -16px rgba(0, 0, 0, 0.2);
     z-index: 2;
 }
-html[data-route-transition-platform="md"][data-route-transition="push-right"]::view-transition-new(page) {
-    animation-name: route-transition-md-axis-in-right;
-    animation-timing-function: var(--route-transition-md-push-ease);
+html[data-route-transition-platform="material"][data-route-transition="backward"]::view-transition-new(page) {
+    animation-name: route-transition-material-axis-in-right;
+    animation-timing-function: var(--route-transition-material-spatial-ease);
     opacity: 1;
     z-index: 1;
 }
 
-@keyframes route-transition-md-axis-out-left {
+@keyframes route-transition-material-axis-out-left {
     0% { transform: translateX(0); opacity: 1; }
     35%, 100% { opacity: 0; }
-    100% { transform: translateX(calc(-1 * var(--route-transition-md-shared-axis-distance))); }
+    100% { transform: translateX(calc(-1 * var(--route-transition-material-shared-axis-distance))); }
 }
-@keyframes route-transition-md-axis-in-left {
-    0% { transform: translateX(var(--route-transition-md-shared-axis-distance)); opacity: 0; }
+@keyframes route-transition-material-axis-in-left {
+    0% { transform: translateX(var(--route-transition-material-shared-axis-distance)); opacity: 0; }
     35% { opacity: 0; }
     100% { transform: translateX(0); opacity: 1; }
 }
-@keyframes route-transition-md-axis-out-right {
+@keyframes route-transition-material-axis-out-right {
     0% { transform: translateX(0); opacity: 1; }
     35%, 100% { opacity: 0; }
-    100% { transform: translateX(var(--route-transition-md-shared-axis-distance)); }
+    100% { transform: translateX(var(--route-transition-material-shared-axis-distance)); }
 }
-@keyframes route-transition-md-axis-in-right {
-    0% { transform: translateX(calc(-1 * var(--route-transition-md-shared-axis-distance))); opacity: 0; }
+@keyframes route-transition-material-axis-in-right {
+    0% { transform: translateX(calc(-1 * var(--route-transition-material-shared-axis-distance))); opacity: 0; }
     35% { opacity: 0; }
     100% { transform: translateX(0); opacity: 1; }
 }
 
-/* A quick, plain cross-dissolve for unrelated peer routes on both platforms. */
-html[data-route-transition="fade"]::view-transition-old(root),
-html[data-route-transition="fade"]::view-transition-new(root) {
+/* A quick, plain cross-dissolve for unrelated routes on both platforms. The
+   base region is always named, so it gets the same treatment as the root
+   snapshot instead of the user agent's default fade. */
+html[data-route-transition="cross-fade"]::view-transition-old(root),
+html[data-route-transition="cross-fade"]::view-transition-new(root),
+html[data-route-transition="cross-fade"]::view-transition-old(base),
+html[data-route-transition="cross-fade"]::view-transition-new(base) {
     animation-duration: var(--route-transition-fade-duration);
     animation-timing-function: var(--route-transition-ios-ease);
     animation-fill-mode: both;
@@ -496,57 +540,17 @@ html[data-route-transition="fade"]::view-transition-new(root) {
    among them - coverage dips to roughly three quarters halfway through and
    whatever is behind the page shows through as a flash. Holding the incoming
    page opaque underneath keeps coverage complete on any engine. */
-html[data-route-transition="fade"]::view-transition-old(root) {
+html[data-route-transition="cross-fade"]::view-transition-old(root),
+html[data-route-transition="cross-fade"]::view-transition-old(base) {
     animation-name: route-transition-fade-out;
     mix-blend-mode: normal;
     z-index: 1;
 }
-html[data-route-transition="fade"]::view-transition-new(root) {
+html[data-route-transition="cross-fade"]::view-transition-new(root),
+html[data-route-transition="cross-fade"]::view-transition-new(base) {
     animation: none;
     mix-blend-mode: normal;
     opacity: 1;
 }
 
 @keyframes route-transition-fade-out { to { opacity: 0.001; } }
-
-/* Morph: a card growing into (or shrinking back from) its own full-screen
-   route. This is a generic scale+fade approximation of Material's
-   "container transform" - true shared-element geometry morphing would need
-   the originating element's on-screen rect, which a route-level helper
-   doesn't have. Modern iOS has a system zoom transition too, but it likewise
-   requires a matched source view; without one, iOS uses this soft fallback. */
-html[data-route-transition="morph-in"]::view-transition-old(root),
-html[data-route-transition="morph-in"]::view-transition-new(root),
-html[data-route-transition="morph-out"]::view-transition-old(root),
-html[data-route-transition="morph-out"]::view-transition-new(root) {
-    animation: none;
-}
-
-html[data-route-transition="morph-in"]::view-transition-old(page),
-html[data-route-transition="morph-in"]::view-transition-new(page),
-html[data-route-transition="morph-out"]::view-transition-old(page) {
-    animation-duration: var(--route-transition-morph-duration);
-    animation-fill-mode: both;
-}
-
-html[data-route-transition-platform="ios"][data-route-transition="morph-in"]::view-transition-old(page) { animation: route-transition-morph-shrink-out var(--route-transition-morph-duration) var(--route-transition-ios-ease) both; }
-html[data-route-transition-platform="ios"][data-route-transition="morph-in"]::view-transition-new(page) { animation: route-transition-morph-grow-in var(--route-transition-morph-duration) var(--route-transition-ios-ease) both; }
-html[data-route-transition-platform="ios"][data-route-transition="morph-out"]::view-transition-old(page) { animation: route-transition-morph-dismiss-out var(--route-transition-morph-dismiss-duration) var(--route-transition-dismiss-ease) both; }
-
-html[data-route-transition-platform="md"][data-route-transition="morph-in"]::view-transition-old(page) { animation: route-transition-morph-shrink-out var(--route-transition-morph-duration) var(--route-transition-md-push-ease) both; }
-html[data-route-transition-platform="md"][data-route-transition="morph-in"]::view-transition-new(page) { animation: route-transition-morph-grow-in var(--route-transition-morph-duration) var(--route-transition-md-push-ease) both; }
-html[data-route-transition-platform="md"][data-route-transition="morph-out"]::view-transition-old(page) { animation: route-transition-morph-dismiss-out var(--route-transition-morph-dismiss-duration) var(--route-transition-md-push-ease) both; }
-
-html[data-route-transition="morph-out"]::view-transition-old(page) {
-    z-index: 2;
-}
-
-html[data-route-transition="morph-out"]::view-transition-new(page) {
-    animation: none;
-    opacity: 1;
-    z-index: 1;
-}
-
-@keyframes route-transition-morph-shrink-out { to { opacity: 0; transform: scale(0.98); } }
-@keyframes route-transition-morph-grow-in { from { opacity: 0; transform: scale(0.92); } }
-@keyframes route-transition-morph-dismiss-out { to { opacity: 0; transform: scale(0.92); } }

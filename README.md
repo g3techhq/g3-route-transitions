@@ -5,7 +5,7 @@
 [![docs.rs](https://docs.rs/g3-route-transitions/badge.svg)](https://docs.rs/g3-route-transitions)
 [![License](https://img.shields.io/crates/l/g3-route-transitions.svg)](#license)
 
-Route-owned View Transition helpers for Dioxus Router.
+Native-feeling page transitions for Dioxus Router, declared next to your routes.
 
 <p align="center">
   <a href="https://github.com/g3techhq/g3-ui/raw/main/docs/media/route-transitions-demo.mp4">
@@ -17,222 +17,420 @@ Route-owned View Transition helpers for Dioxus Router.
   </a>
 </p>
 
-You can see a working example [here](https://g3ui.g3tech.net/transitions). It runs inside the real
-`g3-ui` components the transitions are designed to support.
+A [live demo](https://g3ui.g3tech.net/transitions) runs inside the `g3-ui`
+components these transitions were designed for.
 
-This crate keeps route animation rules next to your `Routable` enum, then exposes navigation helpers and explicit snapshot marker components:
+## How it fits together
 
-- `#[route_transitions]` derives transition metadata from route variants.
-- `animated_navigate(route)` computes the animation and history action from the current route. In-place route updates replace history; ordinary navigation pushes it.
-- `animated_go_back(fallback)` takes the outgoing snapshot before popping actual router history. The fallback is used only when no prior entry exists.
-- `try_animated_go_back()` animates a real pop and reports whether history existed, which is useful for platform Back gestures.
-- The optional `native-back` feature connects Android system Back from `g3-native-plugins` to `try_animated_go_back()`.
-- `RouteTransitionProvider` imports the default View Transition stylesheet.
-- `RouteTransitionRoot` wraps the app shell with the provider and cover marker.
-- `RouteTransitionBase`, `RouteTransitionCover`, `RouteTransitionSegment`, and `RouteTransitionPage` mark snapshot regions explicitly.
-- `Platform` (`Ios` / `Md`) plus `set_platform`/`get_platform`/`init_auto_platform` pick which native motion language a transition renders with.
+You need all three pieces before every transition is visible:
 
-Before each transition, the runtime copies the resolved app-surface color and
-the nearest rounded clipping boundary into the document-level snapshot tree.
-This keeps spatial transitions inside embedded app frames and keeps iOS sheet
-scaling theme-correct in both light and dark mode.
+1. **Route metadata** decides *which* transition runs.
+   `#[derive(RouteTransitions)]` reads `#[transition(...)]` on your `Routable`
+   enum.
+2. **Snapshot regions** decide *what moves*. Wrapper components mark the
+   parts of the page that each transition animates.
+3. **Animated navigation** captures the old page *before* the route changes:
+   `animated_navigate`, `try_animated_back`, and `animated_back_or_navigate`.
+   Calling `navigator().push(...)` or `go_back()` directly skips the
+   animation.
 
-## iOS vs Material motion
-
-Every `NavigationAnimation` is a semantic event, not a specific animation - the stylesheet gives each one a different look depending on the current [`Platform`]:
-
-| Animation | iOS (UIKit) | Material (M3) |
-|---|---|---|
-| `PushLeft` / `PushRight` | Navigation-controller push/pop: the outgoing page never fully leaves - it parallax-shifts ~30% off and dims, as if sliding back in the z-axis under the incoming page. | Shared axis (X): both pages travel the standard 30dp distance with a sequential fade-through, reversing direction on Back. |
-| `CoverUp` / `UncoverDown` | Page-sheet modal: the base page scales down slightly and gains rounded corners while it dims. | M3 modal bottom-sheet window motion: 20% vertical travel plus fade, while the base dims without scaling or rounding. |
-| `Fade` | Quick plain cross-dissolve, used for unrelated peer routes. | The same quick cross-dissolve; keeping the incoming page opaque avoids WebView backdrop flashes. |
-| `MorphIn` / `MorphOut` | Soft scale+fade fallback for a system-style zoom when source-view geometry isn't available. | Material container-transform approximation using the official 300ms enter and 250ms return timings; true shared-element geometry still requires a matched source element. |
-
-The Material page push follows the official Shared Axis X composition: a
-30dp slide plus sequential fade-through, with the documented 300ms duration
-and standard easing. The sheet timings and travel follow the published M3
-bottom-sheet window resources. The small leading-edge shadow is an elevation
-cue added for snapshot separation; it isn't part of the Shared Axis primitive.
-
-Two motions intentionally remain product choices rather than platform
-defaults: `Fade` is the fast cross-dissolve used by both modes, and segmented
-content moves as a full-width filmstrip. This preserves the behavior selected
-for g3-ui instead of restoring Material fade-through for unrelated routes.
-
-On iOS, the stylesheet reproduces the visible structure of UIKit navigation
-push/pop and page-sheet presentation. UIKit owns the real system animator and
-does not publish stable CSS duration or Bézier tokens, so these are
-native-style WebView approximations rather than claims of byte-for-byte system
-timing. Apple's fluid zoom also requires matched source-view geometry; the
-route-only morph uses the documented fallback above.
-
-Primary references: [Material motion patterns](https://github.com/material-components/material-components-android/blob/master/docs/theming/Motion.md),
-[M3 bottom-sheet enter](https://github.com/material-components/material-components-android/blob/master/lib/java/com/google/android/material/bottomsheet/res/anim/m3_bottom_sheet_slide_in.xml),
-[M3 bottom-sheet exit](https://github.com/material-components/material-components-android/blob/master/lib/java/com/google/android/material/bottomsheet/res/anim/m3_bottom_sheet_slide_out.xml),
-[Apple fluid transitions](https://developer.apple.com/documentation/uikit/enhancing-your-app-with-fluid-transitions),
-and [UIKit presentation controllers](https://developer.apple.com/documentation/uikit/uipresentationcontroller).
-
-Call `set_platform(Platform::Ios)` / `set_platform(Platform::Md)` once at startup, and again whenever your app's platform mode changes (e.g. a settings toggle), so `animated_navigate` renders the transition that matches. Without an explicit call, `get_platform()` falls back to `detect_platform()` (`cfg(target_os)` on native builds, user-agent sniffing on wasm).
+The transitions use the browser's
+[View Transitions API](https://developer.mozilla.org/docs/Web/API/View_Transition_API).
+Where it is unavailable, or the user prefers reduced motion, routes change
+instantly.
 
 ## Install
 
 ```toml
 [dependencies]
 dioxus = { version = "0.7.9", features = ["router"] }
-g3-route-transitions = "0.2"
+g3-route-transitions = "0.4"
 ```
 
-For automatic Android system Back integration, enable `native-back`:
+Enable `native-back` to animate the native Back action on Android and iOS:
 
 ```toml
-[dependencies]
-g3-route-transitions = { version = "0.2", features = ["native-back"] }
+g3-route-transitions = { version = "0.4", features = ["native-back"] }
 ```
 
-The Rust crate name is `g3_route_transitions`:
-
-```rust
-use g3_route_transitions::{animated_navigate, route_transitions, RouteTransitionRoot};
-```
-
-## Define Route Metadata
-
-Add `#[route_transitions]` to the same enum that derives `Routable`. Use `#[transition(...)]` on variants that need non-default behavior.
+## Quick start
 
 ```rust,ignore
 use dioxus::prelude::*;
-use g3_route_transitions::route_transitions;
+use g3_route_transitions::{
+    RouteTransitionApp, RouteTransitionBaseRegion, RouteTransitionPage, RouteTransitions,
+    animated_back_or_navigate, animated_navigate,
+};
 
-#[route_transitions]
-#[derive(Clone, Routable, PartialEq)]
+#[derive(Clone, PartialEq, Routable, RouteTransitions)]
 enum Route {
-    #[transition(root, replace)]
-    #[route("/items?:tab")]
-    Items { tab: ItemsTab },
+    #[transition(layer = stack_root)]
+    #[route("/")]
+    Home {},
 
-    #[transition(cover)]
-    #[route("/items/new")]
-    NewItem {},
+    #[transition(layer = stack_page)]
+    #[route("/details/:id")]
+    Details { id: u32 },
 
-    #[transition(pushed, replace(key = item_id), forward = ItemComments)]
-    #[route("/items/:item_id?:tab")]
-    ItemDetails { item_id: String, tab: ItemTab },
-
-    #[transition(pushed)]
-    #[route("/items/:item_id/comments")]
-    ItemComments { item_id: String },
+    #[transition(layer = sheet)]
+    #[route("/compose")]
+    Compose {},
 }
-```
-
-Transition rules:
-
-- `base` marks a normal page. It is the default.
-- `root` marks a stable application root such as a bottom-tab destination.
-- `pushed` marks a full-screen page above a root. Root-to-pushed uses `PushLeft`; pushed-to-root uses `PushRight`.
-- `cover` marks a sheet or modal route. Base-to-cover uses `CoverUp`; cover-to-base uses `UncoverDown`.
-- `morph` marks a route that grows out of a card on a `base` route. Base-to-morph uses `MorphIn`; morph-to-base uses `MorphOut`.
-- `push(group = name, order = field)` marks ordered peer routes.
-- `key = field` or `key = (field_a, field_b)` scopes a push group to one logical entity.
-- `forward = Route` or `forward = (RouteA, RouteB)` declares directed drill-down destinations.
-- `replace` makes changes between values of the same variant skip animation and replace browser history. `replace(key = id)` applies only when the identity fields match.
-- `replaces = Route` or `replaces = (RouteA, RouteB)` hands a listed route off to this one: navigating from it replaces its history entry and animates as though entering from the page beneath, so a sheet opened from another sheet rises, and Back returns to the page under both.
-- Routes with no more specific match fall back to `Fade`.
-
-While a transition runs, `<html>` carries `data-route-transition` and `data-route-transition-platform`, plus `data-route-transition-from` (the route being left) and `data-route-transition-to` (the route being entered; absent on Back, where the destination is not known until the router pops). Scope snapshot names with them when one cover should lift an element that another should not:
-
-```css
-html[data-route-transition="cover-up"][data-route-transition-to^="/watch/"] .player {
-  view-transition-name: player;
-}
-```
-
-## Mark Snapshot Regions
-
-`RouteTransitionRoot` is the common app-shell wrapper. It loads the transition CSS and marks the shell as the cover snapshot.
-
-```rust,ignore
-use g3_route_transitions::RouteTransitionRoot;
 
 #[component]
 fn App() -> Element {
+    // Loads the stylesheet and provides the overlay region that sheets use.
+    rsx! { RouteTransitionApp { Router::<Route> {} } }
+}
+
+// Ordinary pages: a base region (stays put, dims under sheets) around a page
+// region (slides for Forward/Backward).
+#[component]
+fn Home() -> Element {
     rsx! {
-        RouteTransitionRoot {
-            Router::<Route> {}
+        RouteTransitionBaseRegion {
+            RouteTransitionPage {
+                button {
+                    onclick: move |_| async move { animated_navigate(Route::Details { id: 1 }).await },
+                    "Open details"
+                }
+                button {
+                    onclick: move |_| async move { animated_navigate(Route::Compose {}).await },
+                    "Compose"
+                }
+            }
+            // Persistent chrome such as a tab bar goes here, outside the page.
+        }
+    }
+}
+
+#[component]
+fn Details(id: u32) -> Element {
+    rsx! {
+        RouteTransitionBaseRegion {
+            RouteTransitionPage {
+                button {
+                    onclick: move |_| async move { animated_back_or_navigate(Route::Home {}).await },
+                    "Back"
+                }
+                "Details {id}"
+            }
+        }
+    }
+}
+
+// Sheets: no base or page region, so the whole sheet rises with the overlay.
+#[component]
+fn Compose() -> Element {
+    rsx! {
+        button {
+            onclick: move |_| async move { animated_back_or_navigate(Route::Home {}).await },
+            "Close"
         }
     }
 }
 ```
 
-For more explicit layouts, use the marker components:
+This example is compiled as part of the crate documentation. The result:
+
+| You navigate | You see | Back shows |
+|---|---|---|
+| Home → Details | `Forward`: Details slides in from the right | `Backward` |
+| Home or Details → Compose | `PresentSheet`: Compose rises and the page underneath dims | `DismissSheet` |
+| Details 1 → Details 2 | `CrossFade`: nothing relates two `stack_page` values | `Backward` (Back only looks at the route being left) |
+
+## Declaring routes
+
+Derive `RouteTransitions` next to `Routable`, and add `#[transition(...)]` only
+where a route needs more than the default. Hover `RouteTransitions` in
+rust-analyzer to see the full reference inline.
+
+### Options
+
+| Option | Meaning |
+|---|---|
+| *(none)* / `layer = base` | Ordinary page with no stack or sheet role. |
+| `layer = stack_root` | Root of a navigation stack, such as a bottom-tab destination. |
+| `layer = stack_page` | Full-screen page pushed above a stack root. |
+| `layer = sheet` | Routed sheet presented over whatever page was showing. |
+| `forward_to = Route` or `(A, B)` | Directed drill-down. Moving to a listed variant is `Forward`, and moving from it back to this variant is `Backward`. |
+| `peers(group = g, order = field)` | Ordered siblings such as tabs. A greater `order` is `Forward`, a smaller one `Backward`, an equal one `None`. |
+| `peers(group = g, key = field, order = field)` | As above, but only routes whose `key` fields are equal are peers. `key = (a, b)` compares several fields. |
+| `history = replace` | Moving between two values of this variant replaces the history entry. |
+| `history = replace(key = field)` | As above, but only when the `key` fields are equal. |
+| `handoff_from = Route` or `(A, B)` | Arriving here from a listed variant replaces its history entry, so Back skips it. |
+
+Each option may appear once per variant. `forward_to` and `handoff_from` must
+name *other* variants. `key` fields need `PartialEq`, and `order` fields need
+`Ord`. Every variant in a `peers` group needs fields with those names and
+compatible types. Tuple variants are not supported.
+
+### Which transition will run?
+
+`animated_navigate(next)` checks these rules in order, and the first match
+wins:
+
+| # | When | Transition | History |
+|---|---|---|---|
+| 1 | `next == current` | none; navigation is skipped | unchanged |
+| 2 | `current` lists `next` in `forward_to` | `Forward` | push |
+| 3 | `next` lists `current` in `forward_to` | `Backward` | push |
+| 4 | `next` lists `current` in `handoff_from` | `PresentSheet` if `next` is a `sheet`, `Forward` if it is a `stack_page`, otherwise `CrossFade` | **replace** |
+| 5 | non-sheet → `sheet` | `PresentSheet` | push* |
+| 6 | `sheet` → non-sheet | `DismissSheet` | push* |
+| 7 | `stack_root` → `stack_page` | `Forward` | push* |
+| 8 | `stack_page` → `stack_root` | `Backward` | push* |
+| 9 | same `peers` group (matching `key`) | `Forward` / `Backward` / `None` by `order` | push* |
+| 10 | same variant with matching `history = replace` | `None` (instant) | **replace** |
+| 11 | anything else | `CrossFade` | push* |
+
+\* History is replaced instead when rule 4's or rule 10's condition also holds.
+For example, tabs with both `peers(...)` and `history = replace` slide *and*
+replace history, so Back leaves the screen instead of replaying every tab.
+
+Some consequences of this order:
+
+- **These layer pairs have no built-in motion and cross-fade:**
+  `base` ↔ any non-sheet layer, `stack_root` ↔ `stack_root`,
+  `stack_page` ↔ `stack_page`, and `sheet` ↔ `sheet`. Add `forward_to` to
+  make one stack page slide to another.
+- **Mutual `forward_to`:** if two variants list each other, both directions
+  are `Forward`.
+- **`history = replace` alone** makes same-variant updates (filters, query
+  params) instant.
+
+### Back
+
+`try_animated_back()` and `animated_back_or_navigate(fallback)` pop real
+router history. The router does not reveal the destination until after the
+old page is captured, so **Back looks only at the layer of the route being
+left**:
+
+| Leaving a… | Back transition |
+|---|---|
+| `sheet` | `DismissSheet` |
+| `stack_page` | `Backward` |
+| `base` or `stack_root` | `CrossFade` |
+
+So Back does not always mirror the forward transition. `forward_to` between
+two `base` routes slides forward but cross-fades back. Two unrelated
+`stack_page`s cross-fade forward but slide back. Give drill-down
+destinations `layer = stack_page` (or `sheet`) when Back should match.
+
+When `animated_back_or_navigate` has no history to pop (after a deep link,
+for example), it navigates to `fallback` using the forward rules above.
+
+## What moves: snapshot regions
+
+A transition only animates the regions it knows about. Everything else
+belongs to the root snapshot.
+
+| Component | Snapshot name | Role |
+|---|---|---|
+| `RouteTransitionApp` | `overlay` | App-level wrapper: links the stylesheet and provides the overlay region. |
+| `RouteTransitionOverlayRegion` | `overlay` | The part that rises or falls for sheets. Use it directly only in a hand-built shell. |
+| `RouteTransitionBaseRegion` | `base` | A non-sheet page's shell. It stays put during navigation and dims under sheets. |
+| `RouteTransitionPage` | `page` | A page's header and body, captured as one image. This is the part that slides for `Forward`/`Backward`. |
+| `RouteTransitionSegment` | `segment` | Content that slides by itself, such as tab bodies under a fixed header. |
+| `RouteTransitionPersistent` | `persistent` | Chrome that never moves and paints above everything, including a rising sheet, such as a desktop navigation rail. |
+| `RouteTransitionStyles` | – | Only links the stylesheet. Use it with a hand-built overlay region. |
+
+| Transition | What animates | What does not |
+|---|---|---|
+| `CrossFade` | root and `base` cross-fade | – |
+| `Forward` / `Backward` | `page` slides with platform motion; a `segment` outside any page slides full-width | root and `base` switch instantly |
+| `PresentSheet` / `DismissSheet` | `overlay` rises or falls; `base` and `page` underneath dim (and scale on iOS) | root is hidden |
+| `None` | nothing; no View Transition runs | – |
+
+In every transition, `persistent` stays exactly in place above the other snapshots. It fades only if one of the two routes does not render it.
+
+### Layout rules
+
+- **Ordinary pages:** `RouteTransitionBaseRegion { RouteTransitionPage { header, body }, tab_bar }`.
+  The page slides and the tab bar stays still.
+- **Sheet routes:** render *no* base or page region. Those are captured
+  separately from the overlay, so the sheet's content would be missing from
+  the rising image.
+- **Segmented content:** wrap the moving body in `RouteTransitionSegment`
+  *without* a surrounding `RouteTransitionPage`. Inside a page, segments are
+  suppressed and the whole page moves instead.
+- **Persistent chrome:** render it on *both* sides of a transition, sheet
+  routes included, in the same place. For example, a sheet route on desktop
+  renders the same navigation rail as the page beneath it.
+- **One of each:** render at most one of each region at a time. Duplicate
+  `view-transition-name`s make the browser skip the animation.
+- **`RouteTransitionApp` alone gives only cross-fades.** Stack motion needs
+  a page or segment region, and sheets need a base region to rise over.
 
 ```rust,ignore
-use g3_route_transitions::{RouteTransitionBase, RouteTransitionSegment};
-
+// Tabs whose bodies slide under a fixed header:
 rsx! {
-    RouteTransitionBase { nav { "Tabs or base page" } }
-    RouteTransitionSegment { main { Outlet::<Route> {} } }
-}
-```
-
-When a page shell already contains nested base/segment markers, wrap each
-routed page in `RouteTransitionPage`. It captures the header, body, and tab bar
-as one viewport-sized image, which prevents independent snapshots from
-overlapping or exposing an embedded WebView's background:
-
-```rust,ignore
-use g3_route_transitions::RouteTransitionPage;
-
-rsx! {
-    RouteTransitionPage {
-        Header { title: "Items" }
-        Body { Outlet::<Route> {} }
+    RouteTransitionBaseRegion {
+        Header { SegmentedControl {} }
+        RouteTransitionSegment { TabBody {} }
+        TabBar {}
     }
 }
 ```
 
-The marker class constants are also public for libraries that need to place the marker on an existing element without adding a wrapper:
+Component libraries can place the markers on their own elements with the
+public class constants: `ROUTE_TRANSITION_BASE_REGION_CLASS`,
+`ROUTE_TRANSITION_OVERLAY_REGION_CLASS`, `ROUTE_TRANSITION_PAGE_CLASS`,
+`ROUTE_TRANSITION_SEGMENT_CLASS`, and `ROUTE_TRANSITION_PERSISTENT_CLASS`. For a
+region that should only apply at some breakpoints, such as a rail that is a
+bottom bar on phones, set `view-transition-name: persistent` inside your own
+media or container query instead.
 
-- `ROUTE_TRANSITION_BASE_CLASS`
-- `ROUTE_TRANSITION_COVER_CLASS`
-- `ROUTE_TRANSITION_SEGMENT_CLASS`
-- `ROUTE_TRANSITION_PAGE_CLASS`
+## How each transition looks
 
-## Navigate
+`NavigationTransition` names *what happened*. `Platform` decides how it looks.
+Call `set_platform(Platform::Ios)` or `set_platform(Platform::Material)` at
+startup, and again whenever the app's mode changes. Otherwise
+`get_platform()` falls back to `detect_platform()`: `Ios` on iOS targets and
+iPhone/iPad user agents, and `Material` everywhere else.
 
-```rust,ignore
-button {
-    onclick: move |_| spawn(async move {
-        animated_navigate(Route::NewItem {}).await;
-    }),
-    "New item"
+| Transition | iOS | Material |
+|---|---|---|
+| `Forward` | Navigation-controller push: the new page slides in from the right over the old one, which shifts 30% left and dims. | Shared Axis X: both pages move 30px left with a sequential fade-through. |
+| `Backward` | The reverse pop. | The reverse, moving right. |
+| `PresentSheet` | Page sheet: the sheet rises from the bottom while the page beneath scales to 93%, rounds its corners, and dims. | Bottom sheet: the sheet rises 20% while fading in; the page beneath dims in place. |
+| `DismissSheet` | The reverse. | The reverse (350ms exit). |
+| `CrossFade` | A quick 150ms dissolve. The new page stays opaque underneath, which avoids WebView backdrop flashes. | Same as iOS. |
+| Segment `Forward`/`Backward` | A full-width filmstrip with both panes locked together. | Same as iOS. |
+
+Directions are physical: `Forward` always enters from the right, including in
+right-to-left documents.
+
+The Material page motion follows the official
+[Shared Axis X](https://github.com/material-components/material-components-android/blob/master/docs/theming/Motion.md)
+spec: a 30dp slide with fade-through, 300ms, standard easing. The sheet
+timings follow the M3 bottom-sheet
+[enter](https://github.com/material-components/material-components-android/blob/master/lib/java/com/google/android/material/bottomsheet/res/anim/m3_bottom_sheet_slide_in.xml)
+and [exit](https://github.com/material-components/material-components-android/blob/master/lib/java/com/google/android/material/bottomsheet/res/anim/m3_bottom_sheet_slide_out.xml)
+resources. The small leading-edge shadow is an added elevation cue.
+`CrossFade` and the segment filmstrip are deliberate product choices shared
+by both platforms.
+
+UIKit does not publish its animator curves, so the iOS motion reproduces the
+visible structure of
+[UIKit push/pop and page-sheet presentation](https://developer.apple.com/documentation/uikit/uipresentationcontroller)
+rather than exact system timing.
+
+Before each transition, the runtime copies the resolved app background and
+the nearest rounded clipping ancestor onto `<html>`. This keeps motion inside
+embedded app frames and keeps the iOS sheet backdrop correct in light and
+dark mode.
+
+## Styling
+
+### Attributes on `<html>` during a transition
+
+| Attribute | Value |
+|---|---|
+| `data-route-transition` | `cross-fade`, `forward`, `backward`, `present-sheet`, or `dismiss-sheet` (`NavigationTransition::data_value`) |
+| `data-route-transition-platform` | `ios` or `material` (`Platform::data_value`) |
+| `data-route-transition-from` | Path of the route being left |
+| `data-route-transition-to` | Path of the route being entered. Absent on Back, because the destination is not known yet. |
+
+Use these to lift extra elements into their own snapshot for specific
+transitions:
+
+```css
+html[data-route-transition="present-sheet"][data-route-transition-to^="/watch/"] .player {
+  view-transition-name: player;
 }
 ```
 
-Use the matching history helper for Back affordances. A bare
-`navigator.go_back()` changes the route before the old page can be captured.
+To override the library's animations, target the snapshot names from the
+region table, for example
+`html[data-route-transition="forward"]::view-transition-new(page)`.
+
+### Custom properties
+
+Load overrides after the library stylesheet. Scope platform-specific values
+with `html[data-route-transition-platform="ios"]` or `"material"`.
+
+| Property | Default (iOS / Material) | Controls |
+|---|---|---|
+| `--route-transition-bg` | falls back to `--color-bg`, then `#f8f8f8` | Background of `html`, `body`, and the regions |
+| `--route-transition-stack-duration` | `260ms` / `300ms` | `Forward` / `Backward` page motion |
+| `--route-transition-segment-duration` | stack duration | Segment filmstrip |
+| `--route-transition-sheet-duration` | `0.6s` / `400ms` | Sheet presentation (and iOS dismissal) |
+| `--route-transition-material-sheet-dismiss-duration` | – / `350ms` | Material sheet dismissal |
+| `--route-transition-fade-duration` | `150ms` | `CrossFade` |
+| `--route-transition-material-shared-axis-distance` | `30px` | Material page travel |
+| `--route-transition-ios-presentation-backdrop` | app surface mixed 72% with black | Area exposed around the scaled iOS page |
+
+The runtime sets `--route-transition-document-bg`,
+`--route-transition-surface-bg`, `--route-transition-incoming-surface-bg`, and
+`--route-transition-clip-radius` during each transition. Do not set these
+yourself.
+
+### Global styles
+
+The stylesheet also applies layout rules outside the transition itself:
+
+- `html` and `body` get `min-height: 100%` and the `--route-transition-bg`
+  background.
+- The base and overlay regions are full-height flex columns
+  (`min-height: 100dvh`) with that background.
+- `RouteTransitionPage` is a `100dvh` flex column with `overflow: hidden`.
+
+## Navigating
 
 ```rust,ignore
-use g3_route_transitions::animated_go_back;
-
 button {
-    onclick: move |_| spawn(async move {
-        animated_go_back(Route::Items { tab: Tab::All }).await;
-    }),
-    "Back"
+    onclick: move |_| async move { animated_navigate(Route::Compose {}).await },
+    "Compose"
 }
 ```
 
-The route mutation still happens inside the Rust/JavaScript acknowledgement
-handshake: JavaScript captures the old WebView frame, asks Rust to push,
-replace, or pop the Dioxus route, waits for the route commit, and then releases
-the transition. If `document.startViewTransition` is unavailable or the user
-prefers reduced motion, navigation falls back to the same router action without
-animation.
+- **`animated_navigate(route)`** applies the rule table. It does nothing if
+  `route` is already current.
+- **`animated_back_or_navigate(fallback)`** is for visible Back buttons. It
+  pops history, or navigates to `fallback` at the history root.
+- **`try_animated_back()`** pops history and returns `false` when there was
+  nothing to pop, so platform Back handlers can keep their own root behavior.
 
-## Android System Back
+All three must run beneath `Router::<Route>`, and their futures resolve when
+the animation finishes. Internally, JavaScript captures the old page, asks
+Rust to push, replace, or pop the route, waits for the new route to render,
+and then lets the animation run.
 
-With the `native-back` feature enabled, call one hook in a layout beneath the
-Dioxus router:
+## Browser Back and Forward
+
+On the web, the browser's own Back and Forward buttons change the route
+without a transition unless you opt in. Call one hook in the component that
+renders the router, before `Router::<Route>`:
+
+```rust,ignore
+use g3_route_transitions::use_browser_history_transitions;
+
+#[component]
+fn App() -> Element {
+    use_browser_history_transitions::<Route>();
+    rsx! { RouteTransitionApp { Router::<Route> {} } }
+}
+```
+
+The hook wraps the renderer's history, so a base path, hash routing, and
+scroll restoration keep working. It delays the router's update until the old
+page has been captured. Back uses the same transition as
+`try_animated_back`, and Forward replays the original push.
+
+- The Navigation API supplies the direction where the browser supports it.
+  Otherwise the hook uses the entries pushed since the page loaded, and a
+  traversal it cannot place cross-fades.
+- When the browser has already animated the traversal (it sets
+  `hasUAVisualTransition`, for example for Safari's edge swipe), the route
+  changes without a second animation. Pages cannot turn off that browser
+  animation.
+- Pops started by `try_animated_back` are not animated twice.
+- Builds other than web are unaffected.
+
+## Native Back on Android and iOS
+
+With `native-back` enabled, call one hook from a layout beneath the router:
 
 ```rust,ignore
 use g3_route_transitions::use_native_back_navigation;
@@ -240,25 +438,65 @@ use g3_route_transitions::use_native_back_navigation;
 #[component]
 fn AppLayout() -> Element {
     use_native_back_navigation::<Route>();
-
     rsx! { Outlet::<Route> {} }
 }
 ```
 
-That is the complete connector. The hook prepares `g3-native-plugins`, tracks
-real Dioxus router history, enables Android interception only when a pop is
-possible, and calls the same animated operation used by visible Back buttons.
-It reuses `NativePluginsProvider` when the app already has one and otherwise
-owns the Back plugin itself.
+The hook prepares `g3-native-plugins`, reusing an existing
+`NativePluginsProvider` if the app has one. It takes over the native Back
+action (Android's Back gesture or key, and iOS's swipe in from the left screen
+edge) only while router history can be popped, and runs the same animated pop
+as `try_animated_back`. At the root, Android Back leaves the app and an iOS
+edge swipe does nothing, as usual. On the web the hook does nothing; use
+`use_browser_history_transitions` there.
 
-Dialogs, sheets, fullscreen players, and other higher-priority UI can claim the
-cancelable `g3nativeback` window event with `event.preventDefault()`. If such UI
-can be open at the root of router history, use
-`use_native_back_navigation_with_interception::<Route>(is_open)` so the native
-callback remains enabled until that UI closes. After an actual route pop, the
-library emits `g3routebacktransitionend` for optional work such as restoring
-scroll position. If no UI claims an intercepted event and no route can be
-popped, the hook passes that press back to Android instead of trapping it.
+Dialogs, sheets, fullscreen players, and other higher-priority UI can claim
+the cancelable `g3nativeback` window event by calling
+`event.preventDefault()`. If such UI can be open at the root of history, use
+`use_native_back_navigation_with_interception::<Route>(is_open)` so the event
+still fires. When no layer claims the event and there is no history, the
+action goes back to the platform: Android handles it, and iOS drops the swipe.
+After an animated pop, the library dispatches `g3routebacktransitionend`
+(`NATIVE_BACK_TRANSITION_FINISHED_EVENT`) for work such as restoring scroll
+position.
+
+## Migrating from 0.3
+
+| 0.3 | 0.4 |
+|---|---|
+| `#[route_transitions]` | `#[derive(RouteTransitions)]` |
+| `root` / `pushed` | `layer = stack_root` / `layer = stack_page` |
+| `cover` | `layer = sheet` |
+| `morph` | Removed; unrelated routes use `CrossFade` |
+| `push(...)` | `peers(...)` |
+| `forward = ...` | `forward_to = ...` |
+| `replace(...)` | `history = replace(...)` |
+| `replaces = ...` | `handoff_from = ...` |
+| `NavigationAnimation` | `NavigationTransition` |
+| `PushLeft` / `PushRight` | `Forward` / `Backward` |
+| `CoverUp` / `UncoverDown` | `PresentSheet` / `DismissSheet` |
+| `Fade` | `CrossFade` |
+| `Platform::Md` | `Platform::Material` |
+| `RouteTransitionRoot` | `RouteTransitionApp` |
+| `RouteTransitionProvider` | `RouteTransitionStyles` |
+| `RouteTransitionBase` | `RouteTransitionBaseRegion` |
+| `RouteTransitionCover` | `RouteTransitionOverlayRegion` |
+| `ROUTE_TRANSITION_BASE_CLASS` | `ROUTE_TRANSITION_BASE_REGION_CLASS` |
+| `ROUTE_TRANSITION_COVER_CLASS` | `ROUTE_TRANSITION_OVERLAY_REGION_CLASS` |
+| `animated_go_back` | `animated_back_or_navigate` |
+| `try_animated_go_back` | `try_animated_back` |
+
+If you wrote custom CSS against the stylesheet, update these too:
+
+| 0.3 | 0.4 |
+|---|---|
+| `data-route-transition="fade"` | `"cross-fade"` |
+| `"push-left"` / `"push-right"` | `"forward"` / `"backward"` |
+| `"cover-up"` / `"uncover-down"` | `"present-sheet"` / `"dismiss-sheet"` |
+| `"morph-in"` / `"morph-out"` | Removed |
+| `data-route-transition-platform="md"` | `"material"` |
+| `::view-transition-*(cover)` | `::view-transition-*(overlay)` |
+| `.route-transition-base` / `.route-transition-cover` | `.route-transition-base-region` / `.route-transition-overlay-region` |
 
 ## License
 
