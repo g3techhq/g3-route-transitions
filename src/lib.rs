@@ -1103,10 +1103,11 @@ mod tests {
         assert!(production_source.contains("pub fn RouteTransitionPersistent"));
         assert!(production_source.contains("merge_transition_class"));
     }
-    /// Persistent chrome never moves, stays above page pushes but below routed
-    /// sheets, and fades instead of popping when only one route renders it.
+    /// Persistent chrome never moves, stays above every other snapshot
+    /// including a routed sheet, and fades instead of popping when only one
+    /// route renders it.
     #[test]
-    fn persistent_chrome_is_static_and_sheets_cover_it() {
+    fn persistent_chrome_is_static_and_stays_above_sheets() {
         let stylesheet = include_str!("../assets/route_transitions.css");
         let rule = |selector: &str| {
             stylesheet
@@ -1120,11 +1121,17 @@ mod tests {
         let group = rule("html[data-route-transition]::view-transition-group(persistent)");
         assert!(group.contains("animation: none"));
         assert!(group.contains("z-index: 10000"));
+        // A sheet must not be given its own higher stacking than the rail. The
+        // rail outranks the overlay so a desktop rail stays reachable while a
+        // sheet is up; chrome a sheet should cover is simply not persistent.
         for transition in ["present-sheet", "dismiss-sheet"] {
             let selector = format!(
                 "html[data-route-transition=\"{transition}\"]::view-transition-group(persistent)"
             );
-            assert!(rule(&selector).contains("z-index: 9998"));
+            assert!(
+                !stylesheet.contains(&format!("{selector} {{")),
+                "{selector} must not override the persistent stacking order"
+            );
         }
         assert!(
             rule("html[data-route-transition]::view-transition-old(persistent):only-child")

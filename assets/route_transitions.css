@@ -114,8 +114,10 @@ html[data-route-transition="dismiss-sheet"]::view-transition-group(overlay) {
 
 /* Persistent chrome - a desktop navigation rail, for instance - sits outside
    every transition. It is captured on its own, so it neither moves with the
-   page nor dims under a sheet. It paints above page pushes, but below a routed
-   sheet so the sheet cannot appear to slip behind the rail while dismissing.
+   page nor dims under a sheet, and it paints above everything, including a
+   routed sheet. Chrome a sheet is meant to cover, such as a phone's bottom tab
+   bar, must not be marked persistent: mark it only at the widths where it
+   should stay reachable, and let it fall back into the base region elsewhere.
    When both routes render it, the new image simply replaces the old one in
    place. When only one side renders it, it fades rather than popping. */
 .route-transition-persistent {
@@ -125,14 +127,6 @@ html[data-route-transition="dismiss-sheet"]::view-transition-group(overlay) {
 html[data-route-transition]::view-transition-group(persistent) {
     animation: none;
     z-index: 10000;
-}
-
-html[data-route-transition="present-sheet"]::view-transition-group(persistent) {
-    z-index: 9998;
-}
-
-html[data-route-transition="dismiss-sheet"]::view-transition-group(persistent) {
-    z-index: 9998;
 }
 
 html[data-route-transition]::view-transition-old(persistent),

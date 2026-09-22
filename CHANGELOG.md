@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-22
+
+### Fixed
+
+- Persistent chrome was stacked *below* a routed sheet, contradicting the
+  documented promise that it "stays in place above all other snapshots, such
+  as a desktop rail beside a rising sheet". A sheet covered a desktop
+  navigation rail for the length of the transition, and the live rail then
+  popped back on top the moment the transition ended. The sheet-specific
+  `z-index` overrides are gone, so persistent chrome now outranks the overlay
+  as documented. Chrome that a sheet *should* cover, such as a phone's bottom
+  tab bar, must not be marked persistent; mark it only at the widths where it
+  should stay reachable and let it fall back into the base region elsewhere.
+
 ## [0.4.0] - 2026-09-21
 
 ### Added
