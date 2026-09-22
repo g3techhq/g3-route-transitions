@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-21
+
 ### Added
 
 - `use_browser_history_transitions::<Route>()` animates the browser's Back and
@@ -13,27 +15,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   renders the router. It wraps the renderer's history and delays the router
   update until the old page has been captured. Traversals the browser already
   animated (`hasUAVisualTransition`) are not animated again.
-
-### Changed
-
-- `use_native_back_navigation` and
-  `use_native_back_navigation_with_interception` now work on iOS as well as
-  Android. With `native-back` enabled, an iOS swipe in from the left edge runs
-  the same animated router pop as Android's Back, using the iOS bridge that
-  `g3-native-plugins` 0.3 already provides. At the root the swipe does
-  nothing, as before.
-
-### Fixed
-
-- Native Back only worked once per launch. Dioxus's Android and iOS renderers
-  close an `eval` channel when its script returns, so the bridge never
-  received Rust's reply to the first press and ignored every press after it.
-  The bridge now stays alive until it is replaced.
-
-## [0.4.0] - 2026-09-16
-
-### Added
-
 - `RouteTransitionPersistent` and `ROUTE_TRANSITION_PERSISTENT_CLASS` mark
   chrome that stays in place during every transition, such as a desktop
   navigation rail. It paints above a rising sheet instead of dimming with the
@@ -42,6 +23,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `use_native_back_navigation` and
+  `use_native_back_navigation_with_interception` now work on iOS as well as
+  Android. With `native-back` enabled, an iOS swipe in from the left edge runs
+  the same animated router pop as Android's Back, using the iOS bridge that
+  `g3-native-plugins` provides. At the root the swipe does nothing, as before.
 - Replaced the `#[route_transitions]` attribute with the idiomatic
   `#[derive(RouteTransitions)]`. The derive registers `#[transition(...)]` and
   carries the complete option reference so rust-analyzer can show it on hover.
@@ -87,6 +73,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The quick-start example is now a compiled doctest.
 
 ### Fixed
+
+- Native Back only worked once per launch. Dioxus's Android and iOS renderers
+  close an `eval` channel when its script returns, so the bridge never
+  received Rust's reply to the first press and ignored every press after it.
+  The bridge now stays alive until it is replaced.
 
 - `animated_navigate` and `try_animated_back` no longer call the
   `use_navigator` hook from inside async tasks, which added a hook slot to the
