@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Navigation no longer hangs on a page the browser does not paint: a
+  background tab, or an occluded window or preview pane that still reports
+  itself visible. The browser captures the old page on its next rendering
+  opportunity and only then runs the update that changes the route, so
+  neither happened and `animated_navigate` never returned. If the update has
+  not started within a second, the transition is skipped, which still runs
+  it: the route changes without motion.
+
 ## [0.4.1] - 2026-09-22
 
 ### Fixed

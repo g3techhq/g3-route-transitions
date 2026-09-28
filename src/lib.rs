@@ -585,6 +585,10 @@ const dxRouteTransitionIncomingPaintContext = () => {
         dxRouteTransitionSurfaceBackground(),
     );
 };
+// How long a navigation waits for the browser to capture the old page before
+// giving up on the animation. A painted page captures within a frame or two.
+const UNPAINTED_PAGE_MS = 1000;
+
 // Resolves once the router has replaced the page, or after a ceiling if it
 // renders something indistinguishable.
 //
@@ -640,7 +644,9 @@ try {
         // silently drops out of the transition.
         void document.documentElement.offsetHeight;
 
+        let updateStarted = false;
         const transition = document.startViewTransition(async () => {
+            updateStarted = true;
             // Watch first, then ask. The router usually renders while the ack
             // is still in flight, so an observer started afterwards has already
             // missed the only mutation it cares about.
@@ -663,6 +669,16 @@ try {
             dxRouteTransitionIncomingPaintContext();
         });
 
+        // The old page is captured on the next rendering opportunity, and the
+        // update callback, which asks for the route, runs only after that. A
+        // page the browser does not paint (a background tab, an occluded
+        // window or preview pane) may report itself visible yet never render,
+        // so neither happens and the navigation waits forever. Skipping still
+        // runs the update callback, so the route changes, just without motion.
+        const unpainted = window.setTimeout(() => {
+            if (!updateStarted) transition.skipTransition();
+        }, UNPAINTED_PAGE_MS);
+
         try {
             await transition.ready;
         } catch (_) {
@@ -672,6 +688,7 @@ try {
             await transition.finished;
         } catch (_) {
         }
+        window.clearTimeout(unpainted);
 
         dioxus.send("done");
     }
@@ -1182,6 +1199,25 @@ mod tests {
             "the flush must come after the attributes"
         );
         assert!(flush < capture, "the flush must come before the snapshot");
+    }
+    #[test]
+    fn a_page_that_never_paints_still_navigates() {
+        // Without the watchdog, an occluded window or background tab never
+        // captures the old page, the update callback never runs, and the
+        // route never changes.
+        let script = VIEW_TRANSITION_NAVIGATE;
+        let started = script
+            .find("updateStarted = true;")
+            .expect("the update callback marks itself started");
+        let navigate = script
+            .find("dioxus.send(\"navigate\");\n\n            const routeCommit")
+            .expect("the update callback asks for the route");
+        assert!(
+            started < navigate,
+            "mark the start before asking for the route"
+        );
+        assert!(script.contains("if (!updateStarted) transition.skipTransition();"));
+        assert!(script.contains("window.clearTimeout(unpainted);"));
     }
     #[test]
     fn runtime_exports_the_shell_paint_context_to_the_snapshot_tree() {
