@@ -89,6 +89,23 @@ html[data-route-transition="dismiss-sheet"] .route-transition-page {
     contain: layout paint;
 }
 
+/* Under a routed sheet only the page stays on screen, so chrome beside it (a
+   phone's bottom tab bar) would vanish as the sheet starts to rise. A frame
+   around the page is captured as the page instead, chrome included. Not when
+   the frame holds persistent chrome, such as a desktop rail: that is captured
+   on its own, and dimming it with the page would be wrong. */
+html[data-route-transition="present-sheet"] .route-transition-page-frame:has(> .route-transition-page):not(:has(> .route-transition-persistent)),
+html[data-route-transition="dismiss-sheet"] .route-transition-page-frame:has(> .route-transition-page):not(:has(> .route-transition-persistent)) {
+    view-transition-name: page;
+    contain: layout paint;
+}
+
+html[data-route-transition="present-sheet"] .route-transition-page-frame:not(:has(> .route-transition-persistent)) > .route-transition-page,
+html[data-route-transition="dismiss-sheet"] .route-transition-page-frame:not(:has(> .route-transition-persistent)) > .route-transition-page {
+    view-transition-name: none;
+    contain: none;
+}
+
 html[data-route-transition="forward"] .route-transition-page .route-transition-segment,
 html[data-route-transition="backward"] .route-transition-page .route-transition-segment {
     view-transition-name: none;

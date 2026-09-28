@@ -1,6 +1,6 @@
 [package]
 name = "g3-route-transitions"
-version = "0.4.2"
+version = "0.4.3"
 
 edition = "2024"
 description = "Route-owned View Transition helpers for Dioxus Router."

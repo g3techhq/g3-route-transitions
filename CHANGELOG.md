@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-28
+
+### Fixed
+
+- A phone's bottom tab bar no longer vanishes while a routed sheet rises over
+  it or falls away. Only the page stayed on screen under a sheet, so chrome
+  beside the page left a bare background until the transition ended. A shell
+  with the new `ROUTE_TRANSITION_PAGE_FRAME_CLASS` around the page is captured
+  as the page during sheet transitions, tab bar included; g3-ui's `TabLayout`
+  carries it.
+
+### Added
+
+- `ROUTE_TRANSITION_PAGE_FRAME_CLASS`.
+
 ## [0.4.2] - 2026-09-28
 
 ### Fixed
