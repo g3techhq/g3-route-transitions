@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-28
+
 ### Fixed
 
 - Navigation no longer hangs on a page the browser does not paint: a
