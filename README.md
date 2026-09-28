@@ -233,6 +233,7 @@ belongs to the root snapshot.
 | `RouteTransitionPage` | `page` | A page's header and body, captured as one image. This is the part that slides for `Forward`/`Backward`. |
 | `RouteTransitionSegment` | `segment` | Content that slides by itself, such as tab bodies under a fixed header. |
 | `RouteTransitionPersistent` | `persistent` | Chrome that never moves and paints above everything, including a rising sheet, such as a desktop navigation rail. |
+| `ROUTE_TRANSITION_PAGE_FRAME_CLASS` | `page`, under sheets | A shell around a page that holds chrome a sheet should cover, such as a phone's bottom tab bar. During sheet transitions the frame, not the bare page, is what dims under the sheet. |
 | `RouteTransitionStyles` | – | Only links the stylesheet. Use it with a hand-built overlay region. |
 
 | Transition | What animates | What does not |
@@ -254,6 +255,10 @@ In every transition, `persistent` stays exactly in place above the other snapsho
 - **Segmented content:** wrap the moving body in `RouteTransitionSegment`
   *without* a surrounding `RouteTransitionPage`. Inside a page, segments are
   suppressed and the whole page moves instead.
+- **Chrome a sheet covers:** put the page and the chrome in one shell with
+  `ROUTE_TRANSITION_PAGE_FRAME_CLASS` (g3-ui's `TabLayout` has it). The page
+  still slides alone for pushes, and the tab bar stays under a rising sheet
+  instead of vanishing.
 - **Persistent chrome:** render it on *both* sides of a transition, sheet
   routes included, in the same place. For example, a sheet route on desktop
   renders the same navigation rail as the page beneath it.
@@ -276,7 +281,8 @@ rsx! {
 Component libraries can place the markers on their own elements with the
 public class constants: `ROUTE_TRANSITION_BASE_REGION_CLASS`,
 `ROUTE_TRANSITION_OVERLAY_REGION_CLASS`, `ROUTE_TRANSITION_PAGE_CLASS`,
-`ROUTE_TRANSITION_SEGMENT_CLASS`, and `ROUTE_TRANSITION_PERSISTENT_CLASS`. For a
+`ROUTE_TRANSITION_SEGMENT_CLASS`, `ROUTE_TRANSITION_PERSISTENT_CLASS`, and
+`ROUTE_TRANSITION_PAGE_FRAME_CLASS`. For a
 region that should only apply at some breakpoints, such as a rail that is a
 bottom bar on phones, set `view-transition-name: persistent` inside your own
 media or container query instead.

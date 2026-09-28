@@ -201,6 +201,21 @@ pub const ROUTE_TRANSITION_PAGE_CLASS: &str = "route-transition-page";
 /// can set `view-transition-name: persistent` themselves instead of using the
 /// class.
 pub const ROUTE_TRANSITION_PERSISTENT_CLASS: &str = "route-transition-persistent";
+/// Class for a shell around a [`RouteTransitionPage`] that holds chrome a
+/// sheet should cover, such as a phone's bottom tab bar.
+///
+/// The page slides by itself for `Forward` and `Backward`, so chrome beside
+/// it stays still. But under a routed sheet only the named page stays on
+/// screen (it dims, and scales on iOS) while the rest of the old route is
+/// hidden, so a tab bar beside the page vanished the moment a sheet started to
+/// rise. During sheet transitions a frame whose direct child is the page is
+/// captured as the page instead, tab bar included.
+///
+/// A frame with persistent chrome among its direct children (a desktop rail)
+/// is left alone: the rail is already captured on its own, and the page is the
+/// part to dim beside it. Apply the class to the shell unconditionally;
+/// g3-ui's `TabLayout` does.
+pub const ROUTE_TRANSITION_PAGE_FRAME_CLASS: &str = "route-transition-page-frame";
 fn merge_transition_class(base: &'static str, extra: Option<&str>) -> String {
     match extra {
         Some(extra) if !extra.is_empty() => format!("{base} {extra}"),
@@ -1117,6 +1132,7 @@ mod tests {
         assert!(production_source.contains("pub fn RouteTransitionSegment"));
         assert!(production_source.contains("pub fn RouteTransitionPage"));
         assert!(production_source.contains("pub const ROUTE_TRANSITION_PERSISTENT_CLASS"));
+        assert!(production_source.contains("pub const ROUTE_TRANSITION_PAGE_FRAME_CLASS"));
         assert!(production_source.contains("pub fn RouteTransitionPersistent"));
         assert!(production_source.contains("merge_transition_class"));
     }
@@ -1199,6 +1215,24 @@ mod tests {
             "the flush must come after the attributes"
         );
         assert!(flush < capture, "the flush must come before the snapshot");
+    }
+    #[test]
+    fn a_page_frame_is_the_page_under_a_sheet_unless_it_holds_persistent_chrome() {
+        let css = include_str!("../assets/route_transitions.css");
+        for kind in ["present-sheet", "dismiss-sheet"] {
+            let frame = format!(
+                "html[data-route-transition=\"{kind}\"] .route-transition-page-frame:has(> .route-transition-page):not(:has(> .route-transition-persistent))"
+            );
+            let inner = format!(
+                "html[data-route-transition=\"{kind}\"] .route-transition-page-frame:not(:has(> .route-transition-persistent)) > .route-transition-page"
+            );
+            assert!(css.contains(&frame), "the frame is named for {kind}");
+            assert!(css.contains(&inner), "the inner page is unnamed for {kind}");
+        }
+        // Only sheets: a push still slides the bare page past still chrome.
+        assert!(
+            !css.contains("html[data-route-transition=\"forward\"] .route-transition-page-frame")
+        );
     }
     #[test]
     fn a_page_that_never_paints_still_navigates() {
