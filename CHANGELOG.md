@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-08
+
+### Added
+
+- `use_route_transition_settled`: false until the transition that brought a
+  component in has finished. A navigation animates only once the new page has
+  rendered, so a page that draws a first screenful and the rest after the slide
+  starts moving sooner and stutters less.
+
 ## [0.4.3] - 2026-09-28
 
 ### Fixed

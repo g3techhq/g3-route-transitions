@@ -895,6 +895,60 @@ where
         animated_navigate(fallback).await;
     }
 }
+/// False until the transition that brought this component in has finished,
+/// then true. Call it in the page, or in a list on it.
+///
+/// A navigation animates only once the new page has rendered, because the
+/// browser snapshots the incoming page before it can slide it in. Whatever the
+/// page draws before then is time between the tap and the first moving frame,
+/// and a long list or a wall of images makes that time visible. Drawing only a
+/// first screenful until this reads true keeps the cost of every page's first
+/// frame small and the same, whether its data was cached or not:
+///
+/// ```rust,no_run
+/// use dioxus::prelude::*;
+/// use g3_route_transitions::use_route_transition_settled;
+///
+/// #[component]
+/// fn Feed(items: Vec<String>) -> Element {
+///     let settled = use_route_transition_settled();
+///     let shown = if settled() { items.len() } else { 8 };
+///     rsx! {
+///         for item in items.iter().take(shown) {
+///             p { "{item}" }
+///         }
+///     }
+/// }
+/// ```
+///
+/// Rendering that happens while the slide runs also competes with it for the
+/// main thread, so this suits anything that can wait a moment, such as a
+/// request that re-renders the page when it lands.
+///
+/// Outside a transition (a first load, a reload) it settles after two frames.
+/// A ceiling of a second and a half covers a webview that has stopped drawing.
+pub fn use_route_transition_settled() -> ReadSignal<bool> {
+    let mut settled = use_signal(|| false);
+    use_effect(move || {
+        spawn(async move {
+            let mut done = eval(ROUTE_TRANSITION_SETTLED);
+            _ = done.recv::<bool>().await;
+            settled.set(true);
+        });
+    });
+    settled.into()
+}
+const ROUTE_TRANSITION_SETTLED: &str = r#"
+let sent = false;
+const done = () => { if (!sent) { sent = true; dioxus.send(true); } };
+setTimeout(done, 1500);
+// Frames do not tick inside a view transition's update callback, but they do
+// once its animations run, so this settles when they end.
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+while (!sent && document.documentElement.dataset.routeTransition) await frame();
+if (!sent) await frame();
+done();
+"#;
 #[cfg(feature = "native-back")]
 /// Window event emitted after native Back has completed an animated router pop.
 ///
