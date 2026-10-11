@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Reject staged local shared-library dependencies in the commit hook.
+
+- Require the selected commit's quality gate before publishing and verify the parent archive on dry runs.
+
 ## [0.4.4] - 2026-10-08
 
 ### Added
