@@ -103,7 +103,7 @@ pub(crate) fn traversal_transition<Route: RouteTransitions>(
     traversal: Traversal,
 ) -> NavigationTransition {
     if from == to {
-        return NavigationTransition::None;
+        return NavigationTransition::Instant;
     }
     match traversal {
         Traversal::Back => from.transition_back(),
@@ -389,14 +389,14 @@ mod web {
                         .borrow_mut()
                         .traverse(&to, Traversal::parse(direction));
                     let animation = if programmatic || ua_animated == "1" {
-                        NavigationTransition::None
+                        NavigationTransition::Instant
                     } else {
                         match (Route::from_str(&from), Route::from_str(&to)) {
                             (Ok(from), Ok(to)) => traversal_transition(&from, &to, traversal),
-                            _ => NavigationTransition::None,
+                            _ => NavigationTransition::Instant,
                         }
                     };
-                    if animation == NavigationTransition::None {
+                    if animation == NavigationTransition::Instant {
                         update();
                         _ = bridge.send("restore-scroll");
                         continue;
@@ -532,7 +532,7 @@ mod tests {
         );
         assert_eq!(
             traversal_transition(&Page::Root, &Page::Root, Traversal::Back),
-            T::None
+            T::Instant
         );
     }
 

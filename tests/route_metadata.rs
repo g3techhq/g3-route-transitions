@@ -93,7 +93,7 @@ fn in_place_variants_replace_history_with_optional_identity_keys() {
     let filtered_home = Route::Home { filter: 1 };
     assert_eq!(
         home.transition_to(&filtered_home),
-        NavigationTransition::None
+        NavigationTransition::Instant
     );
     assert!(home.replaces_history(&filtered_home));
     let ratings = Route::Ratings { id: 7, filter: 0 };
@@ -199,7 +199,7 @@ mod documented_rules {
         #[transition(layer = stack_page, handoff_from = SheetA)]
         HandedPage {},
         #[transition(handoff_from = SheetA)]
-        HandedBase {},
+        HandedPlain {},
         #[transition(peers(group = tabs, order = tab))]
         TabA {
             tab: u8,
@@ -238,9 +238,9 @@ mod documented_rules {
     fn handoff_motion_follows_the_destination_layer_and_replaces() {
         let sheet = Route::SheetA {};
         assert_eq!(sheet.transition_to(&Route::HandedPage {}), T::Forward);
-        assert_eq!(sheet.transition_to(&Route::HandedBase {}), T::CrossFade);
+        assert_eq!(sheet.transition_to(&Route::HandedPlain {}), T::CrossFade);
         assert!(sheet.replaces_history(&Route::HandedPage {}));
-        assert!(sheet.replaces_history(&Route::HandedBase {}));
+        assert!(sheet.replaces_history(&Route::HandedPlain {}));
     }
 
     #[test]
@@ -248,7 +248,7 @@ mod documented_rules {
         let a = Route::TabA { tab: 1 };
         assert_eq!(a.transition_to(&Route::TabB { tab: 2 }), T::Forward);
         assert_eq!(a.transition_to(&Route::TabB { tab: 0 }), T::Backward);
-        assert_eq!(a.transition_to(&Route::TabB { tab: 1 }), T::None);
+        assert_eq!(a.transition_to(&Route::TabB { tab: 1 }), T::Instant);
         assert!(!a.replaces_history(&Route::TabB { tab: 2 }));
     }
 
@@ -271,7 +271,7 @@ mod documented_rules {
         assert_eq!(Route::SheetA {}.transition_back(), T::DismissSheet);
         assert_eq!(Route::PageB {}.transition_back(), T::Backward);
         assert_eq!(Route::RootA {}.transition_back(), T::CrossFade);
-        // Forward from `Linked` slides, but Back from the base-layer `Other`
+        // Forward from `Linked` slides, but Back from the plain-layer `Other`
         // cross-fades.
         assert_eq!(Route::Other {}.transition_back(), T::CrossFade);
         // `PageA` → `PageB` cross-fades, but Back from `PageB` slides.

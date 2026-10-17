@@ -6,6 +6,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+Renamed so that each name means one thing. The README's "Migrating from 0.4"
+table lists every rename.
+
+- `layer = base` is `layer = plain`, and `RouteTransitionLayer::Base` is
+  `RouteTransitionLayer::Plain`. "Base" was both this layer and the base
+  region that every non-sheet page renders, stack pages included. The derive
+  reports the old spelling with the new one.
+- The region components all end in `Region`: `RouteTransitionPageRegion`,
+  `RouteTransitionSegmentRegion`, and `RouteTransitionPersistentRegion`, with
+  `ROUTE_TRANSITION_PAGE_REGION_CLASS`, `ROUTE_TRANSITION_SEGMENT_REGION_CLASS`,
+  and `ROUTE_TRANSITION_PERSISTENT_REGION_CLASS`. Their CSS classes gained the
+  same suffix (`.route-transition-page-region`, and so on). Snapshot names are
+  unchanged.
+- `NavigationTransition::None` is `NavigationTransition::Instant`, which no
+  longer shadows `Option::None` under a glob import. Its `data_value` is
+  `instant`.
+- `get_platform()` is `platform()`.
+- `use_native_back_navigation_with_interception::<Route>(bool)` is
+  `use_native_back_navigation_with_layer::<Route>(layer_open)`, which takes a
+  `Signal<bool>`, `Memo<bool>`, or other readable `bool`.
+
+### Added
+
+- `RouteTransitionPageFrame`, a component for the shell that
+  `ROUTE_TRANSITION_PAGE_FRAME_CLASS` marks.
+
+### Removed
+
+- `init_auto_platform`. `platform()` already falls back to `detect_platform()`.
+
 ### Fixed
 
 - A navigation that starts while another is still running, such as a quick
@@ -18,9 +50,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `:root` now applies on Material too. The Material defaults were set with a
   more specific selector than `:root`, so the override only reached iOS. The
   library's defaults now have zero specificity.
-- The rustdoc of `RouteTransitionPersistent` and
-  `ROUTE_TRANSITION_PERSISTENT_CLASS` said routed sheets paint above persistent
-  chrome. They paint below it, as the README and the stylesheet have said
+- The persistent region's component and class rustdoc said routed sheets
+  paint above persistent chrome. They paint below it, as the README and the stylesheet have said
   since 0.4.1.
 - `use_native_back_navigation` applies native interception after each render
   instead of writing its signal while the component renders.
@@ -36,11 +67,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The navigation docs say what happens to a future whose calling component is
   unmounted by the navigation it started: it is dropped, so code after the
   `.await` in a handler on the page being left does not run.
-
-### Deprecated
-
-- `init_auto_platform`. `get_platform` already falls back to
-  `detect_platform`.
 
 ### Internal
 

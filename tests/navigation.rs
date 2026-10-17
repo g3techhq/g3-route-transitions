@@ -95,7 +95,7 @@ fn Harness() -> Element {
             animated_navigate_with(Route::Details { id: 3 }, NavigationTransition::CrossFade).await;
             record();
             // An explicit `None` still writes history by the route rules.
-            animated_navigate_with(Route::Home { filter: 1 }, NavigationTransition::None).await;
+            animated_navigate_with(Route::Home { filter: 1 }, NavigationTransition::Instant).await;
             record();
             DONE.with(|done| done.set(true));
         })

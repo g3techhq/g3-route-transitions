@@ -67,7 +67,7 @@ html[data-route-transition]::view-transition {
    mode for application shells whose header, body, and tab bar contain their
    own transition markers: one snapshot prevents those pieces from drifting,
    overlapping, or exposing the WebView backdrop independently. */
-.route-transition-page {
+.route-transition-page-region {
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -80,14 +80,14 @@ html[data-route-transition]::view-transition {
 /* A full-page snapshot owns motion inside its subtree. Nested markers remain
    available everywhere else for applications that use the original
    base/segment layout. */
-.route-transition-page > .route-transition-base-region {
+.route-transition-page-region > .route-transition-base-region {
     view-transition-name: none;
 }
 
-html[data-route-transition="forward"] .route-transition-page,
-html[data-route-transition="backward"] .route-transition-page,
-html[data-route-transition="present-sheet"] .route-transition-page,
-html[data-route-transition="dismiss-sheet"] .route-transition-page {
+html[data-route-transition="forward"] .route-transition-page-region,
+html[data-route-transition="backward"] .route-transition-page-region,
+html[data-route-transition="present-sheet"] .route-transition-page-region,
+html[data-route-transition="dismiss-sheet"] .route-transition-page-region {
     view-transition-name: page;
     contain: layout paint;
 }
@@ -97,20 +97,20 @@ html[data-route-transition="dismiss-sheet"] .route-transition-page {
    around the page is captured as the page instead, chrome included. Not when
    the frame holds persistent chrome, such as a desktop rail: that is captured
    on its own, and dimming it with the page would be wrong. */
-html[data-route-transition="present-sheet"] .route-transition-page-frame:has(> .route-transition-page):not(:has(> .route-transition-persistent)),
-html[data-route-transition="dismiss-sheet"] .route-transition-page-frame:has(> .route-transition-page):not(:has(> .route-transition-persistent)) {
+html[data-route-transition="present-sheet"] .route-transition-page-frame:has(> .route-transition-page-region):not(:has(> .route-transition-persistent-region)),
+html[data-route-transition="dismiss-sheet"] .route-transition-page-frame:has(> .route-transition-page-region):not(:has(> .route-transition-persistent-region)) {
     view-transition-name: page;
     contain: layout paint;
 }
 
-html[data-route-transition="present-sheet"] .route-transition-page-frame:not(:has(> .route-transition-persistent)) > .route-transition-page,
-html[data-route-transition="dismiss-sheet"] .route-transition-page-frame:not(:has(> .route-transition-persistent)) > .route-transition-page {
+html[data-route-transition="present-sheet"] .route-transition-page-frame:not(:has(> .route-transition-persistent-region)) > .route-transition-page-region,
+html[data-route-transition="dismiss-sheet"] .route-transition-page-frame:not(:has(> .route-transition-persistent-region)) > .route-transition-page-region {
     view-transition-name: none;
     contain: none;
 }
 
-html[data-route-transition="forward"] .route-transition-page .route-transition-segment,
-html[data-route-transition="backward"] .route-transition-page .route-transition-segment {
+html[data-route-transition="forward"] .route-transition-page-region .route-transition-segment-region,
+html[data-route-transition="backward"] .route-transition-page-region .route-transition-segment-region {
     view-transition-name: none;
     contain: none;
 }
@@ -121,8 +121,8 @@ html[data-route-transition="dismiss-sheet"] .route-transition-overlay-region {
     contain: layout paint;
 }
 
-html[data-route-transition="forward"] .route-transition-segment,
-html[data-route-transition="backward"] .route-transition-segment {
+html[data-route-transition="forward"] .route-transition-segment-region,
+html[data-route-transition="backward"] .route-transition-segment-region {
     view-transition-name: segment;
     contain: layout paint;
 }
@@ -140,7 +140,7 @@ html[data-route-transition="dismiss-sheet"]::view-transition-group(overlay) {
    should stay reachable, and let it fall back into the base region elsewhere.
    When both routes render it, the new image simply replaces the old one in
    place. When only one side renders it, it fades rather than popping. */
-.route-transition-persistent {
+.route-transition-persistent-region {
     view-transition-name: persistent;
 }
 

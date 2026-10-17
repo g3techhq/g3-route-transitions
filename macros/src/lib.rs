@@ -24,12 +24,12 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 ///
 /// | Option | Meaning |
 /// |---|---|
-/// | `layer = base` | Ordinary page. This is the default. |
+/// | `layer = plain` | Ordinary page with no stack or sheet role. This is the default. |
 /// | `layer = stack_root` | Root of a navigation stack, such as a bottom-tab destination. |
 /// | `layer = stack_page` | Full-screen page pushed above a stack root. |
 /// | `layer = sheet` | Routed sheet presented over whatever page was showing. |
 /// | `forward_to = Route` / `forward_to = (A, B)` | Directed drill-down: moving to a listed variant is `Forward`, and moving from it back to this variant is `Backward`. |
-/// | `peers(group = g, order = field)` | Ordered siblings, such as tabs. Moving to a greater `order` is `Forward`, to a smaller one `Backward`, to an equal one `None`. |
+/// | `peers(group = g, order = field)` | Ordered siblings, such as tabs. Moving to a greater `order` is `Forward`, to a smaller one `Backward`, to an equal one `Instant`. |
 /// | `peers(group = g, key = field, order = field)` | As above, but only routes whose `key` fields are equal are peers. `key = (a, b)` compares several fields. |
 /// | `history = replace` | Navigating between two values of this variant replaces the current history entry. |
 /// | `history = replace(key = field)` | As above, but only when the `key` fields are equal. |
@@ -42,7 +42,7 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 ///
 /// | # | Rule | Transition | History |
 /// |---|---|---|---|
-/// | 1 | `current == next` | `None` (navigation is skipped entirely) | unchanged |
+/// | 1 | `current == next` | `Instant` (navigation is skipped entirely) | unchanged |
 /// | 2 | `current` lists `next`'s variant in `forward_to` | `Forward` | push |
 /// | 3 | `next` lists `current`'s variant in `forward_to` | `Backward` | push |
 /// | 4 | `next` lists `current`'s variant in `handoff_from` | by `next`'s layer: `sheet` → `PresentSheet`, `stack_page` → `Forward`, otherwise `CrossFade` | **replace** |
@@ -50,8 +50,8 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 /// | 6 | `current` is a `sheet`, `next` is not | `DismissSheet` | push* |
 /// | 7 | `stack_root` → `stack_page` | `Forward` | push* |
 /// | 8 | `stack_page` → `stack_root` | `Backward` | push* |
-/// | 9 | both in the same `peers` group (and `key`s match) | `Forward` / `Backward` / `None` by `order` | push* |
-/// | 10 | same variant with a matching `history = replace` | `None` | **replace** |
+/// | 9 | both in the same `peers` group (and `key`s match) | `Forward` / `Backward` / `Instant` by `order` | push* |
+/// | 10 | same variant with a matching `history = replace` | `Instant` | **replace** |
 /// | 11 | anything else | `CrossFade` | push* |
 ///
 /// \* History is replaced instead whenever rule 4's or rule 10's condition
@@ -60,7 +60,7 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 /// replace history.
 ///
 /// Layer pairs not listed in rules 5–8 have no built-in relationship:
-/// `base` ↔ anything non-sheet, `stack_root` ↔ `stack_root`,
+/// `plain` ↔ anything non-sheet, `stack_root` ↔ `stack_root`,
 /// `stack_page` ↔ `stack_page`, and `sheet` ↔ `sheet` all fall through to
 /// `peers`, `history`, and finally `CrossFade`. Use `forward_to` to make two
 /// stack pages slide.
@@ -79,10 +79,10 @@ use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_ma
 /// |---|---|
 /// | `sheet` | `DismissSheet` |
 /// | `stack_page` | `Backward` |
-/// | `base` or `stack_root` | `CrossFade` |
+/// | `plain` or `stack_root` | `CrossFade` |
 ///
 /// This means Back does not always mirror the forward animation. For example,
-/// `forward_to` between two `base` routes slides forward but cross-fades on
+/// `forward_to` between two `plain` routes slides forward but cross-fades on
 /// Back, and two unrelated `stack_page` routes cross-fade forward but slide
 /// on Back. Give drill-down destinations `layer = stack_page` (or
 /// `layer = sheet`) when Back should mirror the forward motion.
@@ -217,7 +217,7 @@ pub fn derive_route_transitions(item: TokenStream) -> TokenStream {
                 fn transition_to(&self, next: &Self) -> #transition {
                     // Rule 1: the same route.
                     if self == next {
-                        return #transition::None;
+                        return #transition::Instant;
                     }
                     // Rules 2 and 3: directed drill-down.
                     if is_forward(self, next) {
@@ -251,12 +251,12 @@ pub fn derive_route_transitions(item: TokenStream) -> TokenStream {
                         return match ordering {
                             #ordering::Greater => #transition::Forward,
                             #ordering::Less => #transition::Backward,
-                            #ordering::Equal => #transition::None,
+                            #ordering::Equal => #transition::Instant,
                         };
                     }
                     // Rule 10: an in-place update.
                     if replaces(self, next) {
-                        return #transition::None;
+                        return #transition::Instant;
                     }
                     // Rule 11.
                     #transition::CrossFade
@@ -299,9 +299,9 @@ fn build_layer_arms(
         .map(|variant| {
             let pattern = build_layer_pattern(enum_ident, &variant.ident, &variant.fields)?;
             let layer = match variant.transition.layer {
-                RouteLayer::Base => {
+                RouteLayer::Plain => {
                     quote! {
-                        ::g3_route_transitions::RouteTransitionLayer::Base
+                        ::g3_route_transitions::RouteTransitionLayer::Plain
                     }
                 }
                 RouteLayer::Sheet => {
@@ -622,7 +622,7 @@ struct TransitionArgs {
 impl Default for TransitionArgs {
     fn default() -> Self {
         Self {
-            layer: RouteLayer::Base,
+            layer: RouteLayer::Plain,
             peers: None,
             forward_to: Vec::new(),
             history_replace: None,
@@ -647,14 +647,20 @@ impl Parse for TransitionArgs {
                     input.parse::<Token![=]>()?;
                     let layer: Ident = input.parse()?;
                     args.layer = match layer.to_string().as_str() {
-                        "base" => RouteLayer::Base,
+                        "plain" => RouteLayer::Plain,
+                        "base" => {
+                            return Err(Error::new_spanned(
+                                layer,
+                                "`layer = base` is now `layer = plain`, so it is not confused with the base region every non-sheet page renders",
+                            ));
+                        }
                         "sheet" => RouteLayer::Sheet,
                         "stack_root" => RouteLayer::StackRoot,
                         "stack_page" => RouteLayer::StackPage,
                         _ => {
                             return Err(Error::new_spanned(
                                 layer,
-                                "unknown transition layer; expected base, stack_root, stack_page, or sheet",
+                                "unknown transition layer; expected plain, stack_root, stack_page, or sheet",
                             ));
                         }
                     };
@@ -705,7 +711,7 @@ impl Parse for TransitionArgs {
 }
 #[derive(Clone, Copy)]
 enum RouteLayer {
-    Base,
+    Plain,
     Sheet,
     StackRoot,
     StackPage,
