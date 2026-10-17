@@ -6,9 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-- Reject staged local shared-library dependencies in the commit hook.
+### Internal
 
-- Require the selected commit's quality gate before publishing and verify the parent archive on dry runs.
+- `just check` and `just lint-strict` also build for wasm32, Android and iOS,
+  where the browser-history module and the native-back hook compile.
+- The commit hook rejects staged local shared-library dependencies.
+- Publishing requires the selected commit's quality gate and verifies the
+  parent archive on dry runs.
 
 ## [0.4.4] - 2026-10-08
 
