@@ -17,14 +17,23 @@ format-check:
 check:
     cargo check
     cargo check --manifest-path macros/Cargo.toml
+    cargo check --target wasm32-unknown-unknown
+    cargo check --target aarch64-linux-android --features native-back
+    cargo check --target aarch64-apple-ios --features native-back
 
 lint:
     cargo clippy --all-targets --no-deps
     cargo clippy --manifest-path macros/Cargo.toml --all-targets --no-deps
 
+# The web module and the native-back hook compile only for their targets, so
+# each is linted there as well as on the host.
 lint-strict:
     cargo clippy --all-targets --no-deps -- -D warnings
+    cargo clippy --all-targets --no-deps --features native-back -- -D warnings
     cargo clippy --manifest-path macros/Cargo.toml --all-targets --no-deps -- -D warnings
+    cargo clippy --no-deps --target wasm32-unknown-unknown -- -D warnings
+    cargo clippy --no-deps --target aarch64-linux-android --features native-back -- -D warnings
+    cargo clippy --no-deps --target aarch64-apple-ios --features native-back -- -D warnings
 
 test:
     cargo nextest run
