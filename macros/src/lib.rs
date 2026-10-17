@@ -166,58 +166,115 @@ pub fn derive_route_transitions(item: TokenStream) -> TokenStream {
         Ok(arms) => arms,
         Err(error) => return error.to_compile_error().into(),
     };
+    let (impl_generics, ty_generics, where_clause) = route_enum.generics.split_for_impl();
+    let route = quote! { #enum_ident #ty_generics };
+    let transition = quote! { ::g3_route_transitions::NavigationTransition };
+    let layer = quote! { ::g3_route_transitions::RouteTransitionLayer };
+    let ordering = quote! { ::core::cmp::Ordering };
+    let option = quote! { ::core::option::Option };
+
+    // The helpers are free functions in an anonymous const, so the derive
+    // adds nothing to the enum's own namespace.
     quote! {
-        #[doc(hidden)] impl # enum_ident { fn __g3_route_transition_layer(&self) ->
-        ::g3_route_transitions::RouteTransitionLayer { match self { # (# layer_arms),* }
-        } fn __g3_route_transition_peer_ordering_to(& self, next : &# enum_ident) -> Option <
-        std::cmp::Ordering > { match (self, next) { # (# peer_arms,) * _ => None, } } fn
-        __g3_route_transition_is_forward_to(& self, next : &# enum_ident) -> bool { match (self,
-        next) { # (# forward_arms,) * _ => false, } } fn __g3_route_transition_replaces_history_to(& self,
-        next : &# enum_ident) -> bool { match (self, next) { # (# replace_arms,) * _ =>
-        false, } } fn __g3_route_transition_hands_off_to(& self, next : &# enum_ident) -> bool { match
-        (self, next) { # (# hand_off_arms,) * _ => false, } } } impl
-        ::g3_route_transitions::RouteTransitions for # enum_ident { fn transition_to(&
-        self, next : &# enum_ident,) -> ::g3_route_transitions::NavigationTransition { if
-        self == next { return ::g3_route_transitions::NavigationTransition::None; } if self
-        .__g3_route_transition_is_forward_to(next) { return
-        ::g3_route_transitions::NavigationTransition::Forward; } if next
-        .__g3_route_transition_is_forward_to(self) { return
-        ::g3_route_transitions::NavigationTransition::Backward; } if self
-        .__g3_route_transition_hands_off_to(next) { return match next.__g3_route_transition_layer() {
-        ::g3_route_transitions::RouteTransitionLayer::Sheet => {
-        ::g3_route_transitions::NavigationTransition::PresentSheet }
-        ::g3_route_transitions::RouteTransitionLayer::StackPage => {
-        ::g3_route_transitions::NavigationTransition::Forward }
-        _ => ::g3_route_transitions::NavigationTransition::CrossFade, }; } match (self
-        .__g3_route_transition_layer(), next.__g3_route_transition_layer()) { (current,
-        ::g3_route_transitions::RouteTransitionLayer::Sheet,) if current !=
-        ::g3_route_transitions::RouteTransitionLayer::Sheet => { return
-        ::g3_route_transitions::NavigationTransition::PresentSheet },
-        (::g3_route_transitions::RouteTransitionLayer::Sheet, next,) if next !=
-        ::g3_route_transitions::RouteTransitionLayer::Sheet => { return
-        ::g3_route_transitions::NavigationTransition::DismissSheet },
-        (::g3_route_transitions::RouteTransitionLayer::StackRoot,
-        ::g3_route_transitions::RouteTransitionLayer::StackPage,) => return
-        ::g3_route_transitions::NavigationTransition::Forward,
-        (::g3_route_transitions::RouteTransitionLayer::StackPage,
-        ::g3_route_transitions::RouteTransitionLayer::StackRoot,) => return
-        ::g3_route_transitions::NavigationTransition::Backward, _ => {} } if let
-        Some(ordering) = self.__g3_route_transition_peer_ordering_to(next) { return match ordering {
-        std::cmp::Ordering::Greater => {
-        ::g3_route_transitions::NavigationTransition::Forward } std::cmp::Ordering::Less
-        => { ::g3_route_transitions::NavigationTransition::Backward }
-        std::cmp::Ordering::Equal => { ::g3_route_transitions::NavigationTransition::None
-        } }; } if self.__g3_route_transition_replaces_history_to(next) { return
-        ::g3_route_transitions::NavigationTransition::None; }
-        ::g3_route_transitions::NavigationTransition::CrossFade } fn replaces_history(&
-        self, next : &# enum_ident) -> bool { self.__g3_route_transition_replaces_history_to(next) || self
-        .__g3_route_transition_hands_off_to(next) } fn
-        transition_back(& self) -> ::g3_route_transitions::NavigationTransition { match
-        self.__g3_route_transition_layer() { ::g3_route_transitions::RouteTransitionLayer::Sheet =>
-        { ::g3_route_transitions::NavigationTransition::DismissSheet }
-        ::g3_route_transitions::RouteTransitionLayer::StackPage => {
-        ::g3_route_transitions::NavigationTransition::Backward }
-        _ => ::g3_route_transitions::NavigationTransition::CrossFade, } } }
+        const _: () = {
+            fn layer #impl_generics (route: &#route) -> #layer #where_clause {
+                match route {
+                    #(#layer_arms,)*
+                }
+            }
+
+            fn peer_ordering #impl_generics (current: &#route, next: &#route) -> #option<#ordering>
+            #where_clause
+            {
+                match (current, next) {
+                    #(#peer_arms,)*
+                    _ => #option::None,
+                }
+            }
+
+            fn is_forward #impl_generics (current: &#route, next: &#route) -> bool #where_clause {
+                match (current, next) {
+                    #(#forward_arms,)*
+                    _ => false,
+                }
+            }
+
+            fn replaces #impl_generics (current: &#route, next: &#route) -> bool #where_clause {
+                match (current, next) {
+                    #(#replace_arms,)*
+                    _ => false,
+                }
+            }
+
+            fn hands_off #impl_generics (current: &#route, next: &#route) -> bool #where_clause {
+                match (current, next) {
+                    #(#hand_off_arms,)*
+                    _ => false,
+                }
+            }
+
+            impl #impl_generics ::g3_route_transitions::RouteTransitions for #route #where_clause {
+                fn transition_to(&self, next: &Self) -> #transition {
+                    // Rule 1: the same route.
+                    if self == next {
+                        return #transition::None;
+                    }
+                    // Rules 2 and 3: directed drill-down.
+                    if is_forward(self, next) {
+                        return #transition::Forward;
+                    }
+                    if is_forward(next, self) {
+                        return #transition::Backward;
+                    }
+                    // Rule 4: a hand-off moves like the destination's layer.
+                    if hands_off(self, next) {
+                        return match layer(next) {
+                            #layer::Sheet => #transition::PresentSheet,
+                            #layer::StackPage => #transition::Forward,
+                            _ => #transition::CrossFade,
+                        };
+                    }
+                    // Rules 5 to 8: layer pairs.
+                    match (layer(self), layer(next)) {
+                        (current, #layer::Sheet) if current != #layer::Sheet => {
+                            return #transition::PresentSheet;
+                        }
+                        (#layer::Sheet, next) if next != #layer::Sheet => {
+                            return #transition::DismissSheet;
+                        }
+                        (#layer::StackRoot, #layer::StackPage) => return #transition::Forward,
+                        (#layer::StackPage, #layer::StackRoot) => return #transition::Backward,
+                        _ => {}
+                    }
+                    // Rule 9: ordered peers.
+                    if let #option::Some(ordering) = peer_ordering(self, next) {
+                        return match ordering {
+                            #ordering::Greater => #transition::Forward,
+                            #ordering::Less => #transition::Backward,
+                            #ordering::Equal => #transition::None,
+                        };
+                    }
+                    // Rule 10: an in-place update.
+                    if replaces(self, next) {
+                        return #transition::None;
+                    }
+                    // Rule 11.
+                    #transition::CrossFade
+                }
+
+                fn replaces_history(&self, next: &Self) -> bool {
+                    replaces(self, next) || hands_off(self, next)
+                }
+
+                fn transition_back(&self) -> #transition {
+                    match layer(self) {
+                        #layer::Sheet => #transition::DismissSheet,
+                        #layer::StackPage => #transition::Backward,
+                        _ => #transition::CrossFade,
+                    }
+                }
+            }
+        };
     }
     .into()
 }
@@ -413,6 +470,12 @@ fn build_peer_ordering_arms(
     Ok(arms)
 }
 fn validate_peer_fields(variant: &RouteVariant, peers: &PeerArgs) -> Result<()> {
+    if let Some(field) = peers.key.iter().find(|field| **field == peers.order) {
+        return Err(Error::new_spanned(
+            field,
+            "a peers `order` field cannot also be a `key`: peers with equal keys would always have equal order",
+        ));
+    }
     validate_named_fields(variant, peers.used_fields(), "peers")
 }
 fn validate_named_fields(
@@ -438,7 +501,7 @@ fn validate_named_fields(
         if !field_names.contains(&field.to_string()) {
             return Err(Error::new_spanned(
                 field,
-                format!("transition {transition_name} field is not present on this route variant",),
+                format!("{transition_name} field `{field}` is not a field of this route variant"),
             ));
         }
     }
@@ -626,7 +689,12 @@ impl Parse for TransitionArgs {
                     input.parse::<Token![=]>()?;
                     args.handoff_from = parse_ident_list(input)?;
                 }
-                _ => return Err(Error::new_spanned(ident, "unknown transition argument")),
+                _ => {
+                    return Err(Error::new_spanned(
+                        ident,
+                        "unknown transition argument; expected layer, forward_to, peers, history, or handoff_from",
+                    ));
+                }
             }
             if input.peek(Token![,]) {
                 input.parse::<Token![,]>()?;
@@ -673,12 +741,9 @@ struct PeerArgs {
     order: Ident,
 }
 impl PeerArgs {
+    /// The key fields, then the order field, which is never also a key.
     fn used_fields(&self) -> Vec<&Ident> {
-        let mut fields = self.key.iter().collect::<Vec<_>>();
-        if !fields.contains(&&self.order) {
-            fields.push(&self.order);
-        }
-        fields
+        self.key.iter().chain([&self.order]).collect()
     }
 }
 impl Parse for PeerArgs {
@@ -700,7 +765,12 @@ impl Parse for PeerArgs {
                 "group" => group = Some(input.parse()?),
                 "key" => key = parse_key(input)?,
                 "order" => order = Some(input.parse()?),
-                _ => return Err(Error::new_spanned(name, "unknown peers argument")),
+                _ => {
+                    return Err(Error::new_spanned(
+                        name,
+                        "unknown peers argument; expected group, key, or order",
+                    ));
+                }
             }
             if input.peek(Token![,]) {
                 input.parse::<Token![,]>()?;
@@ -741,15 +811,12 @@ struct FieldAliases {
 }
 impl FieldAliases {
     fn new(prefix: &str, peers: &PeerArgs) -> Self {
-        let mut fields = peers.key.clone();
-        if !fields.iter().any(|field| field == &peers.order) {
-            fields.push(peers.order.clone());
-        }
-        let aliases = fields
+        let aliases = peers
+            .used_fields()
             .into_iter()
             .map(|field| {
                 let alias = format_ident!("{}_{}", prefix, field);
-                (field, alias)
+                (field.clone(), alias)
             })
             .collect();
         Self {
@@ -775,6 +842,10 @@ impl FieldAliases {
             .collect()
     }
     fn order_alias(&self) -> &Ident {
-        &self.aliases.last().expect("push aliases include order").1
+        &self
+            .aliases
+            .last()
+            .expect("peer aliases end with the order field")
+            .1
     }
 }

@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The derive no longer adds hidden `__g3_route_transition_*` methods to the
+  enum. Its helpers are free functions inside an anonymous `const`, and the
+  generated code is laid out to read against the rule table.
+- Generated code names `::core::cmp::Ordering` and `::core::option::Option`
+  instead of relying on `std` paths.
+- Error messages for unknown `transition` and `peers` arguments list the
+  accepted ones, and a missing `peers` or `history` field is named.
+
+### Fixed
+
+- Generic enums derive: the enum's generics and `where` clause are carried
+  onto the impl.
+- A `peers` `order` field that is also listed in `key` is rejected. It used to
+  compare the last key field instead of the order field.
+
 ## [0.4.0] - 2026-09-21
 
 ### Changed
