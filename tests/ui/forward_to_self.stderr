@@ -1,0 +1,5 @@
+error: a route cannot move forward to itself; use `peers(...)` to order values of one variant
+ --> tests/ui/forward_to_self.rs:5:31
+  |
+5 |     #[transition(forward_to = Home)]
+  |                               ^^^^

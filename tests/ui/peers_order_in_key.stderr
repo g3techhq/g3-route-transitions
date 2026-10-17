@@ -1,0 +1,5 @@
+error: a peers `order` field cannot also be a `key`: peers with equal keys would always have equal order
+ --> tests/ui/peers_order_in_key.rs:5:49
+  |
+5 |     #[transition(peers(group = tabs, key = (id, tab), order = tab))]
+  |                                                 ^^^

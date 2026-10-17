@@ -1,0 +1,5 @@
+error: unknown history action; expected replace
+ --> tests/ui/unknown_history_action.rs:5:28
+  |
+5 |     #[transition(history = push)]
+  |                            ^^^^

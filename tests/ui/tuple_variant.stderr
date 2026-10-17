@@ -1,0 +1,5 @@
+error: route transition macro only supports named or unit route variants
+ --> tests/ui/tuple_variant.rs:6:5
+  |
+6 |     Detail(u8),
+  |     ^^^^^^
