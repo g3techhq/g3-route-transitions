@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- `layer = base` is `layer = plain`, and the derive generates
+  `RouteTransitionLayer::Plain` and `NavigationTransition::Instant`, so it
+  needs `g3-route-transitions` 0.5. The old spelling is rejected with a message
+  naming the new one.
+
 ### Changed
 
 - The derive no longer adds hidden `__g3_route_transition_*` methods to the

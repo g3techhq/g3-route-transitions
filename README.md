@@ -44,13 +44,13 @@ instantly.
 ```toml
 [dependencies]
 dioxus = { version = "0.7.9", features = ["router"] }
-g3-route-transitions = "0.4"
+g3-route-transitions = "0.5"
 ```
 
 Enable `native-back` to animate the native Back action on Android and iOS:
 
 ```toml
-g3-route-transitions = { version = "0.4", features = ["native-back"] }
+g3-route-transitions = { version = "0.5", features = ["native-back"] }
 ```
 
 ## Quick start
@@ -58,7 +58,7 @@ g3-route-transitions = { version = "0.4", features = ["native-back"] }
 ```rust,ignore
 use dioxus::prelude::*;
 use g3_route_transitions::{
-    RouteTransitionApp, RouteTransitionBaseRegion, RouteTransitionPage, RouteTransitions,
+    RouteTransitionApp, RouteTransitionBaseRegion, RouteTransitionPageRegion, RouteTransitions,
     animated_back_or_navigate, animated_navigate,
 };
 
@@ -89,7 +89,7 @@ fn App() -> Element {
 fn Home() -> Element {
     rsx! {
         RouteTransitionBaseRegion {
-            RouteTransitionPage {
+            RouteTransitionPageRegion {
                 button {
                     onclick: move |_| async move { animated_navigate(Route::Details { id: 1 }).await },
                     "Open details"
@@ -108,7 +108,7 @@ fn Home() -> Element {
 fn Details(id: u32) -> Element {
     rsx! {
         RouteTransitionBaseRegion {
-            RouteTransitionPage {
+            RouteTransitionPageRegion {
                 button {
                     onclick: move |_| async move { animated_back_or_navigate(Route::Home {}).await },
                     "Back"
@@ -149,12 +149,12 @@ rust-analyzer to see the full reference inline.
 
 | Option | Meaning |
 |---|---|
-| *(none)* / `layer = base` | Ordinary page with no stack or sheet role. |
+| *(none)* / `layer = plain` | Ordinary page with no stack or sheet role. |
 | `layer = stack_root` | Root of a navigation stack, such as a bottom-tab destination. |
 | `layer = stack_page` | Full-screen page pushed above a stack root. |
 | `layer = sheet` | Routed sheet presented over whatever page was showing. |
 | `forward_to = Route` or `(A, B)` | Directed drill-down. Moving to a listed variant is `Forward`, and moving from it back to this variant is `Backward`. |
-| `peers(group = g, order = field)` | Ordered siblings such as tabs. A greater `order` is `Forward`, a smaller one `Backward`, an equal one `None`. |
+| `peers(group = g, order = field)` | Ordered siblings such as tabs. A greater `order` is `Forward`, a smaller one `Backward`, an equal one `Instant`. |
 | `peers(group = g, key = field, order = field)` | As above, but only routes whose `key` fields are equal are peers. `key = (a, b)` compares several fields. |
 | `history = replace` | Moving between two values of this variant replaces the history entry. |
 | `history = replace(key = field)` | As above, but only when the `key` fields are equal. |
@@ -180,8 +180,8 @@ wins:
 | 6 | `sheet` → non-sheet | `DismissSheet` | push* |
 | 7 | `stack_root` → `stack_page` | `Forward` | push* |
 | 8 | `stack_page` → `stack_root` | `Backward` | push* |
-| 9 | same `peers` group (matching `key`) | `Forward` / `Backward` / `None` by `order` | push* |
-| 10 | same variant with matching `history = replace` | `None` (instant) | **replace** |
+| 9 | same `peers` group (matching `key`) | `Forward` / `Backward` / `Instant` by `order` | push* |
+| 10 | same variant with matching `history = replace` | `Instant` | **replace** |
 | 11 | anything else | `CrossFade` | push* |
 
 \* History is replaced instead when rule 4's or rule 10's condition also holds.
@@ -191,7 +191,7 @@ replace history, so Back leaves the screen instead of replaying every tab.
 Some consequences of this order:
 
 - **These layer pairs have no built-in motion and cross-fade:**
-  `base` ↔ any non-sheet layer, `stack_root` ↔ `stack_root`,
+  `plain` ↔ any non-sheet layer, `stack_root` ↔ `stack_root`,
   `stack_page` ↔ `stack_page`, and `sheet` ↔ `sheet`. Add `forward_to` to
   make one stack page slide to another.
 - **Mutual `forward_to`:** if two variants list each other, both directions
@@ -210,10 +210,10 @@ left**:
 |---|---|
 | `sheet` | `DismissSheet` |
 | `stack_page` | `Backward` |
-| `base` or `stack_root` | `CrossFade` |
+| `plain` or `stack_root` | `CrossFade` |
 
 So Back does not always mirror the forward transition. `forward_to` between
-two `base` routes slides forward but cross-fades back. Two unrelated
+two `plain` routes slides forward but cross-fades back. Two unrelated
 `stack_page`s cross-fade forward but slide back. Give drill-down
 destinations `layer = stack_page` (or `sheet`) when Back should match.
 
@@ -230,10 +230,10 @@ belongs to the root snapshot.
 | `RouteTransitionApp` | `overlay` | App-level wrapper: links the stylesheet and provides the overlay region. |
 | `RouteTransitionOverlayRegion` | `overlay` | The part that rises or falls for sheets. Use it directly only in a hand-built shell. |
 | `RouteTransitionBaseRegion` | `base` | A non-sheet page's shell. It stays put during navigation and dims under sheets. |
-| `RouteTransitionPage` | `page` | A page's header and body, captured as one image. This is the part that slides for `Forward`/`Backward`. |
-| `RouteTransitionSegment` | `segment` | Content that slides by itself, such as tab bodies under a fixed header. |
-| `RouteTransitionPersistent` | `persistent` | Chrome that never moves and paints above everything, including a rising sheet, such as a desktop navigation rail. |
-| `ROUTE_TRANSITION_PAGE_FRAME_CLASS` | `page`, under sheets | A shell around a page that holds chrome a sheet should cover, such as a phone's bottom tab bar. During sheet transitions the frame, not the bare page, is what dims under the sheet. |
+| `RouteTransitionPageRegion` | `page` | A page's header and body, captured as one image. This is the part that slides for `Forward`/`Backward`. |
+| `RouteTransitionSegmentRegion` | `segment` | Content that slides by itself, such as tab bodies under a fixed header. |
+| `RouteTransitionPersistentRegion` | `persistent` | Chrome that never moves and paints above everything, including a rising sheet, such as a desktop navigation rail. |
+| `RouteTransitionPageFrame` | `page`, under sheets | A shell around a page that holds chrome a sheet should cover, such as a phone's bottom tab bar. During sheet transitions the frame, not the bare page, is what dims under the sheet. |
 | `RouteTransitionStyles` | – | Only links the stylesheet. Use it with a hand-built overlay region. |
 
 | Transition | What animates | What does not |
@@ -241,22 +241,23 @@ belongs to the root snapshot.
 | `CrossFade` | root and `base` cross-fade | – |
 | `Forward` / `Backward` | `page` slides with platform motion; a `segment` outside any page slides full-width | root and `base` switch instantly |
 | `PresentSheet` / `DismissSheet` | `overlay` rises or falls; `base` and `page` underneath dim (and scale on iOS) | root is hidden |
-| `None` | nothing; no View Transition runs | – |
+| `Instant` | nothing; no View Transition runs | – |
 
 In every transition, `persistent` stays exactly in place above the other snapshots. It fades only if one of the two routes does not render it.
 
 ### Layout rules
 
-- **Ordinary pages:** `RouteTransitionBaseRegion { RouteTransitionPage { header, body }, tab_bar }`.
+- **Ordinary pages:** `RouteTransitionBaseRegion { RouteTransitionPageRegion { header, body }, tab_bar }`.
   The page slides and the tab bar stays still.
 - **Sheet routes:** render *no* base or page region. Those are captured
   separately from the overlay, so the sheet's content would be missing from
   the rising image.
-- **Segmented content:** wrap the moving body in `RouteTransitionSegment`
-  *without* a surrounding `RouteTransitionPage`. Inside a page, segments are
+- **Segmented content:** wrap the moving body in `RouteTransitionSegmentRegion`
+  *without* a surrounding `RouteTransitionPageRegion`. Inside a page, segments are
   suppressed and the whole page moves instead.
 - **Chrome a sheet covers:** put the page and the chrome in one shell with
-  `ROUTE_TRANSITION_PAGE_FRAME_CLASS` (g3-ui's `TabLayout` has it). The page
+  `RouteTransitionPageFrame`, with the page as a direct child (g3-ui's
+  `TabLayout` carries its class). The page
   still slides alone for pushes, and the tab bar stays under a rising sheet
   instead of vanishing.
 - **Persistent chrome:** render it on *both* sides of a transition, sheet
@@ -272,7 +273,7 @@ In every transition, `persistent` stays exactly in place above the other snapsho
 rsx! {
     RouteTransitionBaseRegion {
         Header { SegmentedControl {} }
-        RouteTransitionSegment { TabBody {} }
+        RouteTransitionSegmentRegion { TabBody {} }
         TabBar {}
     }
 }
@@ -280,8 +281,9 @@ rsx! {
 
 Component libraries can place the markers on their own elements with the
 public class constants: `ROUTE_TRANSITION_BASE_REGION_CLASS`,
-`ROUTE_TRANSITION_OVERLAY_REGION_CLASS`, `ROUTE_TRANSITION_PAGE_CLASS`,
-`ROUTE_TRANSITION_SEGMENT_CLASS`, `ROUTE_TRANSITION_PERSISTENT_CLASS`, and
+`ROUTE_TRANSITION_OVERLAY_REGION_CLASS`, `ROUTE_TRANSITION_PAGE_REGION_CLASS`,
+`ROUTE_TRANSITION_SEGMENT_REGION_CLASS`,
+`ROUTE_TRANSITION_PERSISTENT_REGION_CLASS`, and
 `ROUTE_TRANSITION_PAGE_FRAME_CLASS`. For a
 region that should only apply at some breakpoints, such as a rail that is a
 bottom bar on phones, set `view-transition-name: persistent` inside your own
@@ -292,7 +294,7 @@ media or container query instead.
 `NavigationTransition` names *what happened*. `Platform` decides how it looks.
 Call `set_platform(Platform::Ios)` or `set_platform(Platform::Material)` at
 startup, and again whenever the app's mode changes. Otherwise
-`get_platform()` falls back to `detect_platform()`: `Ios` on iOS targets and
+`platform()` falls back to `detect_platform()`: `Ios` on iOS targets and
 iPhone/iPad user agents, and `Material` everywhere else.
 
 | Transition | iOS | Material |
@@ -382,7 +384,7 @@ The stylesheet also applies layout rules outside the transition itself:
   background.
 - The base and overlay regions are full-height flex columns
   (`min-height: 100dvh`) with that background.
-- `RouteTransitionPage` is a `100dvh` flex column with `overflow: hidden`.
+- `RouteTransitionPageRegion` is a `100dvh` flex column with `overflow: hidden`.
 
 ## Navigating
 
@@ -402,7 +404,7 @@ button {
 - **`animated_navigate_with(route, transition)`** runs `transition` instead of
   the one the rules choose, still pushing or replacing history by the rules.
   It is for route-encoded UI state whose motion only the caller knows, such as
-  a filter that the rules treat as `None` but one control slides between.
+  a filter that the rules treat as `Instant` but one control slides between.
 
 All of them must run beneath `Router::<Route>`. Internally, JavaScript
 captures the old page, asks Rust to push, replace, or pop the route, waits for
@@ -485,14 +487,48 @@ edge swipe does nothing, as usual. On the web the hook does nothing; use
 Dialogs, sheets, fullscreen players, and other higher-priority UI can claim
 the cancelable `g3nativeback` window event by calling
 `event.preventDefault()`. If such UI can be open at the root of history, use
-`use_native_back_navigation_with_interception::<Route>(is_open)` so the event
+`use_native_back_navigation_with_layer::<Route>(layer_open)` instead, passing a
+`Signal<bool>` or `Memo<bool>` that is true while the UI is open, so the event
 still fires. When no layer claims the event and there is no history, the
 action goes back to the platform: Android handles it, and iOS drops the swipe.
 After an animated pop, the library dispatches `g3routebacktransitionend`
 (`NATIVE_BACK_TRANSITION_FINISHED_EVENT`) for work such as restoring scroll
 position.
 
+## Migrating from 0.4
+
+0.5 renames so that each name means one thing: `base` was both a layer and a
+region, and only some region components said "Region".
+
+| 0.4 | 0.5 |
+|---|---|
+| `layer = base` | `layer = plain` |
+| `RouteTransitionLayer::Base` | `RouteTransitionLayer::Plain` |
+| `RouteTransitionPage` | `RouteTransitionPageRegion` |
+| `RouteTransitionSegment` | `RouteTransitionSegmentRegion` |
+| `RouteTransitionPersistent` | `RouteTransitionPersistentRegion` |
+| `ROUTE_TRANSITION_PAGE_CLASS` | `ROUTE_TRANSITION_PAGE_REGION_CLASS` |
+| `ROUTE_TRANSITION_SEGMENT_CLASS` | `ROUTE_TRANSITION_SEGMENT_REGION_CLASS` |
+| `ROUTE_TRANSITION_PERSISTENT_CLASS` | `ROUTE_TRANSITION_PERSISTENT_REGION_CLASS` |
+| `ROUTE_TRANSITION_PAGE_FRAME_CLASS` on your own element | Unchanged, or the new `RouteTransitionPageFrame` |
+| `NavigationTransition::None` | `NavigationTransition::Instant` |
+| `get_platform()` | `platform()` |
+| `init_auto_platform()` | Removed; `platform()` already falls back to `detect_platform()` |
+| `use_native_back_navigation_with_interception::<Route>(is_open)` | `use_native_back_navigation_with_layer::<Route>(layer_open)`, where `layer_open` is a `Signal<bool>` or `Memo<bool>` |
+
+If you wrote CSS against the region classes, update these too. Snapshot names
+such as `::view-transition-old(page)` are unchanged.
+
+| 0.4 | 0.5 |
+|---|---|
+| `.route-transition-page` | `.route-transition-page-region` |
+| `.route-transition-segment` | `.route-transition-segment-region` |
+| `.route-transition-persistent` | `.route-transition-persistent-region` |
+
 ## Migrating from 0.3
+
+These are the 0.4 names; apply the 0.5 renames above afterwards.
+
 
 | 0.3 | 0.4 |
 |---|---|

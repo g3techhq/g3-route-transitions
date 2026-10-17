@@ -18,7 +18,7 @@
 //! ```rust,no_run
 //! use dioxus::prelude::*;
 //! use g3_route_transitions::{
-//!     RouteTransitionApp, RouteTransitionBaseRegion, RouteTransitionPage, RouteTransitions,
+//!     RouteTransitionApp, RouteTransitionBaseRegion, RouteTransitionPageRegion, RouteTransitions,
 //!     animated_back_or_navigate, animated_navigate,
 //! };
 //!
@@ -50,7 +50,7 @@
 //! fn Home() -> Element {
 //!     rsx! {
 //!         RouteTransitionBaseRegion {
-//!             RouteTransitionPage {
+//!             RouteTransitionPageRegion {
 //!                 h1 { "Home" }
 //!                 button {
 //!                     onclick: move |_| async move { animated_navigate(Route::Details { id: 1 }).await },
@@ -69,7 +69,7 @@
 //! fn Details(id: u32) -> Element {
 //!     rsx! {
 //!         RouteTransitionBaseRegion {
-//!             RouteTransitionPage {
+//!             RouteTransitionPageRegion {
 //!                 button {
 //!                     onclick: move |_| async move { animated_back_or_navigate(Route::Home {}).await },
 //!                     "Back"
@@ -116,22 +116,22 @@
 //! | Transition | Animated regions | Everything else |
 //! |---|---|---|
 //! | `CrossFade` | root and [`RouteTransitionBaseRegion`] fade | – |
-//! | `Forward` / `Backward` | [`RouteTransitionPage`] slides with platform motion; a [`RouteTransitionSegment`] *outside* any page slides as a full-width filmstrip | root and base region switch instantly |
+//! | `Forward` / `Backward` | [`RouteTransitionPageRegion`] slides with platform motion; a [`RouteTransitionSegmentRegion`] *outside* any page slides as a full-width filmstrip | root and base region switch instantly |
 //! | `PresentSheet` / `DismissSheet` | [`RouteTransitionOverlayRegion`] (added by [`RouteTransitionApp`]) rises or falls; the base region and page region underneath dim (and on iOS, scale) | root is hidden |
-//! | `None` | nothing; the route changes without a View Transition | – |
+//! | `Instant` | nothing; the route changes without a View Transition | – |
 //!
-//! In every transition, [`RouteTransitionPersistent`] stays in place above
+//! In every transition, [`RouteTransitionPersistentRegion`] stays in place above
 //! all other snapshots, such as a desktop rail beside a rising sheet.
 //!
 //! Consequences worth knowing:
 //!
 //! - [`RouteTransitionApp`] on its own only produces visible cross-fades.
-//!   `Forward`/`Backward` need a [`RouteTransitionPage`] or
-//!   [`RouteTransitionSegment`], and sheets need a base region to rise over.
+//!   `Forward`/`Backward` need a [`RouteTransitionPageRegion`] or
+//!   [`RouteTransitionSegmentRegion`], and sheets need a base region to rise over.
 //! - A sheet route must not render a base region or page region. Those are
 //!   captured separately from the overlay, so the sheet's content would be
 //!   missing from the rising image.
-//! - A segment inside a [`RouteTransitionPage`] never moves by itself; the
+//! - A segment inside a [`RouteTransitionPageRegion`] never moves by itself; the
 //!   whole page moves instead. Use segments without a page wrapper for tabbed
 //!   content that should slide under a fixed header.
 //! - Persistent chrome only stays still if both routes render it in the same
@@ -143,7 +143,7 @@
 //!
 //! [`Platform`] picks the visual style for the same semantic transition.
 //! Call [`set_platform`] at startup (and whenever the app's mode changes);
-//! otherwise [`get_platform`] falls back to [`detect_platform`].
+//! otherwise [`platform`] falls back to [`detect_platform`].
 //!
 //! Animations are skipped, and the route is changed directly, when the
 //! browser lacks `document.startViewTransition` or the user prefers reduced
@@ -171,7 +171,7 @@ pub static ROUTE_TRANSITIONS_CSS: Asset = asset!("/assets/route_transitions.css"
 /// sheet. It is styled as a full-height flex column
 /// (`display: flex; flex-direction: column; min-height: 100dvh`) with an
 /// opaque background. A base region that is a direct child of a
-/// [`RouteTransitionPage`] is not named.
+/// [`RouteTransitionPageRegion`] is not named.
 pub const ROUTE_TRANSITION_BASE_REGION_CLASS: &str = "route-transition-base-region";
 /// Class applied by [`RouteTransitionOverlayRegion`] and
 /// [`RouteTransitionApp`].
@@ -180,20 +180,20 @@ pub const ROUTE_TRANSITION_BASE_REGION_CLASS: &str = "route-transition-base-regi
 /// `DismissSheet`, when it rises or falls above the base region. It is styled
 /// as a full-height flex column with an opaque background.
 pub const ROUTE_TRANSITION_OVERLAY_REGION_CLASS: &str = "route-transition-overlay-region";
-/// Class applied by [`RouteTransitionSegment`].
+/// Class applied by [`RouteTransitionSegmentRegion`].
 ///
 /// The element is named `segment` only during `Forward` and `Backward`, when
 /// it slides the full width of its own box as a filmstrip on both platforms.
-/// Inside a [`RouteTransitionPage`] it is not named.
-pub const ROUTE_TRANSITION_SEGMENT_CLASS: &str = "route-transition-segment";
-/// Class applied by [`RouteTransitionPage`].
+/// Inside a [`RouteTransitionPageRegion`] it is not named.
+pub const ROUTE_TRANSITION_SEGMENT_REGION_CLASS: &str = "route-transition-segment-region";
+/// Class applied by [`RouteTransitionPageRegion`].
 ///
 /// The element is named `page` during `Forward`, `Backward`, `PresentSheet`,
 /// and `DismissSheet`. It slides with platform motion for the first two and
 /// dims under a sheet for the others. It is styled as a viewport-height flex
 /// column (`height: 100dvh; overflow: hidden`) with an opaque background.
-pub const ROUTE_TRANSITION_PAGE_CLASS: &str = "route-transition-page";
-/// Class applied by [`RouteTransitionPersistent`].
+pub const ROUTE_TRANSITION_PAGE_REGION_CLASS: &str = "route-transition-page-region";
+/// Class applied by [`RouteTransitionPersistentRegion`].
 ///
 /// The element is always named `persistent` and never animates. It paints
 /// above every other snapshot, a rising or falling sheet included, so chrome
@@ -202,8 +202,8 @@ pub const ROUTE_TRANSITION_PAGE_CLASS: &str = "route-transition-page";
 /// layout to it. Libraries that only want this behavior at some breakpoints
 /// can set `view-transition-name: persistent` themselves instead of using the
 /// class.
-pub const ROUTE_TRANSITION_PERSISTENT_CLASS: &str = "route-transition-persistent";
-/// Class for a shell around a [`RouteTransitionPage`] that holds chrome a
+pub const ROUTE_TRANSITION_PERSISTENT_REGION_CLASS: &str = "route-transition-persistent-region";
+/// Class for a shell around a [`RouteTransitionPageRegion`] that holds chrome a
 /// sheet should cover, such as a phone's bottom tab bar.
 ///
 /// The page slides by itself for `Forward` and `Backward`, so chrome beside
@@ -215,8 +215,8 @@ pub const ROUTE_TRANSITION_PERSISTENT_CLASS: &str = "route-transition-persistent
 ///
 /// A frame with persistent chrome among its direct children (a desktop rail)
 /// is left alone: the rail is already captured on its own, and the page is the
-/// part to dim beside it. Apply the class to the shell unconditionally;
-/// g3-ui's `TabLayout` does.
+/// part to dim beside it. Apply the class to the shell unconditionally, or
+/// render a [`RouteTransitionPageFrame`]; g3-ui's `TabLayout` carries the class.
 pub const ROUTE_TRANSITION_PAGE_FRAME_CLASS: &str = "route-transition-page-frame";
 fn merge_transition_class(base: &'static str, extra: Option<&str>) -> String {
     match extra {
@@ -261,13 +261,13 @@ pub fn RouteTransitionOverlayRegion(children: Element, class: Option<String>) ->
 /// Both the outgoing and incoming segments travel the full width of the box
 /// together, clipped to it. This is the same on iOS and Material. Everything
 /// outside the segment switches instantly. A segment inside a
-/// [`RouteTransitionPage`] does not move by itself, because the page moves
+/// [`RouteTransitionPageRegion`] does not move by itself, because the page moves
 /// instead.
 ///
-/// `class` is appended to [`ROUTE_TRANSITION_SEGMENT_CLASS`].
+/// `class` is appended to [`ROUTE_TRANSITION_SEGMENT_REGION_CLASS`].
 #[component]
-pub fn RouteTransitionSegment(children: Element, class: Option<String>) -> Element {
-    let class = merge_transition_class(ROUTE_TRANSITION_SEGMENT_CLASS, class.as_deref());
+pub fn RouteTransitionSegmentRegion(children: Element, class: Option<String>) -> Element {
+    let class = merge_transition_class(ROUTE_TRANSITION_SEGMENT_REGION_CLASS, class.as_deref());
     rsx! {
         div { class, {children} }
     }
@@ -281,10 +281,10 @@ pub fn RouteTransitionSegment(children: Element, class: Option<String>) -> Eleme
 /// still. Segments and direct-child base regions inside the page are
 /// suppressed so the page moves as one piece.
 ///
-/// `class` is appended to [`ROUTE_TRANSITION_PAGE_CLASS`].
+/// `class` is appended to [`ROUTE_TRANSITION_PAGE_REGION_CLASS`].
 #[component]
-pub fn RouteTransitionPage(children: Element, class: Option<String>) -> Element {
-    let class = merge_transition_class(ROUTE_TRANSITION_PAGE_CLASS, class.as_deref());
+pub fn RouteTransitionPageRegion(children: Element, class: Option<String>) -> Element {
+    let class = merge_transition_class(ROUTE_TRANSITION_PAGE_REGION_CLASS, class.as_deref());
     rsx! {
         div { class, {children} }
     }
@@ -300,10 +300,29 @@ pub fn RouteTransitionPage(children: Element, class: Option<String>) -> Element 
 /// including sheet routes. If only one side renders it, it fades. Render at
 /// most one at a time.
 ///
-/// `class` is appended to [`ROUTE_TRANSITION_PERSISTENT_CLASS`].
+/// `class` is appended to [`ROUTE_TRANSITION_PERSISTENT_REGION_CLASS`].
 #[component]
-pub fn RouteTransitionPersistent(children: Element, class: Option<String>) -> Element {
-    let class = merge_transition_class(ROUTE_TRANSITION_PERSISTENT_CLASS, class.as_deref());
+pub fn RouteTransitionPersistentRegion(children: Element, class: Option<String>) -> Element {
+    let class = merge_transition_class(ROUTE_TRANSITION_PERSISTENT_REGION_CLASS, class.as_deref());
+    rsx! {
+        div { class, {children} }
+    }
+}
+/// A shell around a [`RouteTransitionPageRegion`] and the chrome a sheet should
+/// cover, such as a phone's bottom tab bar.
+///
+/// The page still slides by itself for `Forward` and `Backward`, while the
+/// chrome beside it stays still. Under a routed sheet the whole frame dims
+/// (and scales on iOS) as the page, so the tab bar stays under the rising
+/// sheet instead of vanishing. Make the page a direct child. A frame with a
+/// [`RouteTransitionPersistentRegion`] among its direct children is left
+/// alone, and only the page dims beside it. See
+/// [`ROUTE_TRANSITION_PAGE_FRAME_CLASS`].
+///
+/// `class` is appended to [`ROUTE_TRANSITION_PAGE_FRAME_CLASS`].
+#[component]
+pub fn RouteTransitionPageFrame(children: Element, class: Option<String>) -> Element {
+    let class = merge_transition_class(ROUTE_TRANSITION_PAGE_FRAME_CLASS, class.as_deref());
     rsx! {
         div { class, {children} }
     }
@@ -324,7 +343,7 @@ pub enum NavigationTransition {
     /// No View Transition: the route changes immediately. The derive returns
     /// this for identical routes, equal peer `order`s, and same-variant
     /// `history = replace` updates.
-    None,
+    Instant,
     /// A quick cross-dissolve of the root and base region, the same on both
     /// platforms. This is what unrelated routes get.
     #[default]
@@ -346,11 +365,12 @@ pub enum NavigationTransition {
 }
 impl NavigationTransition {
     /// The `data-route-transition` attribute value the stylesheet keys on:
-    /// `none`, `cross-fade`, `forward`, `backward`, `present-sheet`, or
-    /// `dismiss-sheet`.
+    /// `cross-fade`, `forward`, `backward`, `present-sheet`, or
+    /// `dismiss-sheet`. `Instant` is `instant`, though no transition runs to
+    /// publish it.
     pub fn data_value(self) -> &'static str {
         match self {
-            NavigationTransition::None => "none",
+            NavigationTransition::Instant => "instant",
             NavigationTransition::CrossFade => "cross-fade",
             NavigationTransition::Forward => "forward",
             NavigationTransition::Backward => "backward",
@@ -398,7 +418,7 @@ pub fn set_platform(platform: Platform) {
 }
 /// The platform currently used to style transitions. Falls back to
 /// compile-time/runtime auto-detection if [`set_platform`] was never called.
-pub fn get_platform() -> Platform {
+pub fn platform() -> Platform {
     match GLOBAL_PLATFORM.load(Ordering::Relaxed) {
         1 => Platform::Ios,
         2 => Platform::Material,
@@ -447,17 +467,6 @@ fn detect_platform_web() -> Platform {
         Platform::Material
     }
 }
-/// Initialize the global platform from compile-time/runtime auto-detection.
-///
-/// Unnecessary: [`get_platform`] already falls back to [`detect_platform`]
-/// when [`set_platform`] was never called.
-#[deprecated(
-    since = "0.4.5",
-    note = "get_platform() already falls back to detect_platform(); remove the call"
-)]
-pub fn init_auto_platform() {
-    set_platform(detect_platform());
-}
 /// The navigation role a route declares with `#[transition(layer = ...)]`.
 ///
 /// Code generated by the [`RouteTransitions` derive](derive@RouteTransitions)
@@ -466,10 +475,10 @@ pub fn init_auto_platform() {
 /// each layer takes part in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RouteTransitionLayer {
-    /// `layer = base`: an ordinary page with no stack or sheet role. This is
+    /// `layer = plain`: an ordinary page with no stack or sheet role. This is
     /// the default.
     #[default]
-    Base,
+    Plain,
     /// `layer = sheet`: presented over the previous page with `PresentSheet`
     /// and removed with `DismissSheet`.
     Sheet,
@@ -489,7 +498,7 @@ pub enum RouteTransitionLayer {
 pub trait RouteTransitions: PartialEq {
     /// The transition for [`animated_navigate`] from `self` to `next`.
     ///
-    /// Returning [`NavigationTransition::None`] changes the route without a
+    /// Returning [`NavigationTransition::Instant`] changes the route without a
     /// View Transition.
     fn transition_to(&self, next: &Self) -> NavigationTransition;
     /// Whether [`animated_navigate`] from `self` to `next` replaces the current
@@ -528,8 +537,8 @@ pub fn RouteTransitionStyles(children: Element) -> Element {
 /// `Router::<Route> {}` inside it.
 ///
 /// On its own this only produces visible cross-fades. Pages also need a
-/// [`RouteTransitionBaseRegion`] and a [`RouteTransitionPage`] (or
-/// [`RouteTransitionSegment`]) for stack and sheet motion; see
+/// [`RouteTransitionBaseRegion`] and a [`RouteTransitionPageRegion`] (or
+/// [`RouteTransitionSegmentRegion`]) for stack and sheet motion; see
 /// [What moves](crate#what-moves).
 ///
 /// `class` is appended to [`ROUTE_TRANSITION_OVERLAY_REGION_CLASS`].
@@ -559,7 +568,7 @@ const SURFACE_SELECTOR_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_SURFACE_SELE
 /// The selector the script reads the app's surface color from, built from the
 /// class constants so the two cannot drift apart.
 fn surface_selector() -> String {
-    format!(".{ROUTE_TRANSITION_PAGE_CLASS}, .{ROUTE_TRANSITION_BASE_REGION_CLASS}")
+    format!(".{ROUTE_TRANSITION_PAGE_REGION_CLASS}, .{ROUTE_TRANSITION_BASE_REGION_CLASS}")
 }
 const VIEW_TRANSITION_NAVIGATE: &str = r#"
 const animation = "__DX_ROUTE_TRANSITION_ANIMATION__";
@@ -804,7 +813,7 @@ async fn run_animated_navigation(
     to: Option<&str>,
     mut navigate: impl FnMut(),
 ) {
-    let script = navigate_script(animation, get_platform(), from, to);
+    let script = navigate_script(animation, platform(), from, to);
     let mut transition = eval(&script);
     let mut navigated = false;
     loop {
@@ -834,7 +843,7 @@ async fn run_animated_navigation(
 /// The old page is captured before the router changes, which is why this must
 /// be used instead of `navigator().push(...)`. The call does nothing if
 /// `route` equals the current route. It changes the route without animation
-/// when the transition is [`NavigationTransition::None`], the browser lacks
+/// when the transition is [`NavigationTransition::Instant`], the browser lacks
 /// View Transitions, or the user prefers reduced motion.
 ///
 /// Call it from an event handler, for example
@@ -861,7 +870,7 @@ where
 ///
 /// This is for UI state encoded in a route whose visual relationship only the
 /// caller knows, such as a filter the route rules deliberately treat as
-/// [`NavigationTransition::None`] but one control slides between. Otherwise it
+/// [`NavigationTransition::Instant`] but one control slides between. Otherwise it
 /// behaves exactly like [`animated_navigate`], including doing nothing when
 /// `route` is current. It must run beneath `Router::<Route>`.
 pub async fn animated_navigate_with<Route>(route: Route, animation: NavigationTransition)
@@ -889,7 +898,7 @@ where
             _ = navigator.push(route.clone());
         }
     };
-    if animation == NavigationTransition::None {
+    if animation == NavigationTransition::Instant {
         commit();
         return;
     }
@@ -914,7 +923,7 @@ where
     }
     let current_route = router().current::<Route>();
     let animation = current_route.transition_back();
-    if animation == NavigationTransition::None {
+    if animation == NavigationTransition::Instant {
         navigator.go_back();
         return true;
     }
@@ -1071,25 +1080,51 @@ await released;
 ///
 /// Higher-priority UI may claim the cancelable `g3nativeback` window event by
 /// synchronously calling `preventDefault()`. See
-/// [`use_native_back_navigation_with_interception`] when such UI can be open
-/// without router history.
+/// [`use_native_back_navigation_with_layer`] when such UI can be open without
+/// router history.
 #[cfg(feature = "native-back")]
 pub fn use_native_back_navigation<Route>()
 where
     Route: Routable + RouteTransitions,
 {
-    use_native_back_navigation_with_interception::<Route>(false);
+    use_native_back::<Route>(false);
 }
-/// The configurable form of [`use_native_back_navigation`].
+/// [`use_native_back_navigation`] for an app with UI that sits above the
+/// routes, such as a dialog, a non-routed sheet, or a fullscreen player.
 ///
-/// Set `intercept_without_history` while a non-route UI layer is open at the
-/// root. That layer must synchronously call `preventDefault()` on the
-/// `g3nativeback` event after dismissing itself. If no layer claims the event
-/// and no router history exists, the hook passes that press back to the
-/// platform: Android handles it (usually by leaving the app), and iOS drops the
-/// swipe.
+/// While `layer_open` reads `true`, native Back is taken even with no router
+/// history to pop, so the layer can close. The layer must listen for the
+/// `g3nativeback` window event, close itself, and synchronously call
+/// `preventDefault()` on it. If no layer claims the event and no router
+/// history exists, the press goes back to the platform: Android handles it
+/// (usually by leaving the app), and iOS drops the swipe.
+///
+/// Pass a `Signal<bool>`, a `Memo<bool>`, or any other readable `bool`. Call
+/// this hook once from a layout rendered beneath `Router<Route>`.
+///
+/// ```rust,ignore
+/// let mut player_open = use_signal(|| false);
+/// use_native_back_navigation_with_layer::<Route>(player_open);
+/// ```
 #[cfg(feature = "native-back")]
-pub fn use_native_back_navigation_with_interception<Route>(intercept_without_history: bool)
+pub fn use_native_back_navigation_with_layer<Route>(
+    layer_open: impl Readable<Target = bool> + 'static,
+) where
+    Route: Routable + RouteTransitions,
+{
+    // Read in the body so this component re-renders when the layer opens or
+    // closes, and the interception is re-applied after that render.
+    let layer_open = *layer_open.read();
+    use_native_back::<Route>(layer_open);
+}
+/// The shared body of the native-back hooks: take native Back while history
+/// can be popped, or while `layer_open` is true.
+#[cfg(feature = "native-back")]
+#[cfg_attr(
+    not(any(target_os = "android", target_os = "ios")),
+    allow(clippy::extra_unused_type_parameters)
+)]
+fn use_native_back<Route>(layer_open: bool)
 where
     Route: Routable + RouteTransitions,
 {
@@ -1107,10 +1142,10 @@ where
                 .map(|plugins| plugins.back_button)
                 .unwrap_or(standalone)
         });
-        // The argument is a plain value, so the after-render callback, which is
-        // registered once, reads the latest one from here.
-        let intercept_at_root = use_hook(|| Rc::new(Cell::new(intercept_without_history)));
-        intercept_at_root.set(intercept_without_history);
+        // The after-render callback is registered once, so it reads the
+        // latest value from here.
+        let intercept_at_root = use_hook(|| Rc::new(Cell::new(layer_open)));
+        intercept_at_root.set(layer_open);
         // Native calls and the signal write wait until the render is done.
         dioxus::core::use_after_render({
             let intercept_at_root = intercept_at_root.clone();
@@ -1148,7 +1183,7 @@ where
         });
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let _ = intercept_without_history;
+    let _ = layer_open;
 }
 #[cfg(test)]
 mod tests {
@@ -1240,7 +1275,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {selector}"))
                 .to_string()
         };
-        assert!(rule(".route-transition-persistent").contains("view-transition-name: persistent"));
+        assert!(
+            rule(".route-transition-persistent-region")
+                .contains("view-transition-name: persistent")
+        );
         let group = rule("html[data-route-transition]::view-transition-group(persistent)");
         assert!(group.contains("animation: none"));
         assert!(group.contains("z-index: 10000"));
@@ -1272,10 +1310,14 @@ mod tests {
     #[test]
     fn full_page_snapshots_own_nested_stack_motion() {
         let stylesheet = include_str!("../assets/route_transitions.css");
-        assert!(stylesheet.contains(".route-transition-page"));
+        assert!(stylesheet.contains(".route-transition-page-region"));
         assert!(stylesheet.contains("view-transition-name: page"));
-        assert!(stylesheet.contains(".route-transition-page > .route-transition-base-region"));
-        assert!(stylesheet.contains(".route-transition-page .route-transition-segment"));
+        assert!(
+            stylesheet.contains(".route-transition-page-region > .route-transition-base-region")
+        );
+        assert!(
+            stylesheet.contains(".route-transition-page-region .route-transition-segment-region")
+        );
         assert!(stylesheet.contains("view-transition-old(page)"));
         assert!(stylesheet.contains("view-transition-new(page)"));
     }
@@ -1302,10 +1344,10 @@ mod tests {
         let css = include_str!("../assets/route_transitions.css");
         for kind in ["present-sheet", "dismiss-sheet"] {
             let frame = format!(
-                "html[data-route-transition=\"{kind}\"] .route-transition-page-frame:has(> .route-transition-page):not(:has(> .route-transition-persistent))"
+                "html[data-route-transition=\"{kind}\"] .route-transition-page-frame:has(> .route-transition-page-region):not(:has(> .route-transition-persistent-region))"
             );
             let inner = format!(
-                "html[data-route-transition=\"{kind}\"] .route-transition-page-frame:not(:has(> .route-transition-persistent)) > .route-transition-page"
+                "html[data-route-transition=\"{kind}\"] .route-transition-page-frame:not(:has(> .route-transition-persistent-region)) > .route-transition-page-region"
             );
             assert!(css.contains(&frame), "the frame is named for {kind}");
             assert!(css.contains(&inner), "the inner page is unnamed for {kind}");
@@ -1350,7 +1392,7 @@ mod tests {
         );
         let filled = navigate_script(NavigationTransition::Forward, Platform::Ios, "/", None);
         assert!(filled.contains(
-            r#"const surfaceSelector = ".route-transition-page, .route-transition-base-region";"#
+            r#"const surfaceSelector = ".route-transition-page-region, .route-transition-base-region";"#
         ));
         assert!(script.contains("--route-transition-surface-bg"));
         assert!(script.contains("--route-transition-incoming-surface-bg"));
@@ -1536,9 +1578,9 @@ mod tests {
             .next()
             .expect("production source precedes tests");
         let hook = production_source
-            .split("pub fn use_native_back_navigation_with_interception")
+            .split("fn use_native_back<Route>(layer_open: bool)")
             .nth(1)
-            .expect("the configurable hook is public");
+            .expect("the hooks share one body");
         assert!(hook.contains("#[cfg(any(target_os = \"android\", target_os = \"ios\"))]"));
         assert!(hook.contains("#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]"));
         assert!(!production_source.contains("native-back\", target_os = \"android\")"));
@@ -1696,7 +1738,7 @@ mod tests {
     }
     #[test]
     fn animation_data_values_match_css_contract() {
-        assert_eq!(NavigationTransition::None.data_value(), "none");
+        assert_eq!(NavigationTransition::Instant.data_value(), "instant");
         assert_eq!(NavigationTransition::CrossFade.data_value(), "cross-fade");
         assert_eq!(NavigationTransition::Forward.data_value(), "forward");
         assert_eq!(NavigationTransition::Backward.data_value(), "backward");
@@ -1717,9 +1759,9 @@ mod tests {
     #[test]
     fn set_platform_overrides_auto_detection() {
         set_platform(Platform::Ios);
-        assert_eq!(get_platform(), Platform::Ios);
+        assert_eq!(platform(), Platform::Ios);
         set_platform(Platform::Material);
-        assert_eq!(get_platform(), Platform::Material);
+        assert_eq!(platform(), Platform::Material);
     }
     #[test]
     fn animation_and_platform_are_written_in_rather_than_awaited() {

@@ -1,0 +1,5 @@
+error: `layer = base` is now `layer = plain`, so it is not confused with the base region every non-sheet page renders
+ --> tests/ui/layer_base_renamed.rs:5:26
+  |
+5 |     #[transition(layer = base)]
+  |                          ^^^^
