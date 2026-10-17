@@ -1,4 +1,7 @@
-:root {
+/* The defaults have zero specificity, so an app's own `:root` overrides them on
+   both platforms, whatever order the stylesheets load in. The Material block
+   comes second to win over the iOS defaults at equal specificity. */
+:where(:root) {
     --route-transition-sheet-duration: 0.6s;
     --route-transition-stack-duration: 260ms;
     --route-transition-fade-duration: 150ms;
@@ -20,7 +23,7 @@
     --route-transition-segment-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-html[data-route-transition-platform="material"] {
+:where(html[data-route-transition-platform="material"]) {
     --route-transition-sheet-duration: 400ms;
     --route-transition-stack-duration: 300ms;
     --route-transition-fade-duration: 150ms;

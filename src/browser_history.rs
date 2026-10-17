@@ -112,6 +112,22 @@ pub(crate) fn traversal_transition<Route: RouteTransitions>(
     }
 }
 
+/// How long after our own `go_back`/`go_forward` a `popstate` is taken to be
+/// theirs. The caller is already animating those.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+const PROGRAMMATIC_WINDOW_MS: f64 = 1000.0;
+
+/// Whether a `popstate` at `now` was caused by our own traversal marked at
+/// `marked_at`, both in milliseconds. Without a clock, a mark counts.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+fn is_programmatic(marked_at: Option<f64>, now: Option<f64>) -> bool {
+    match (marked_at, now) {
+        (Some(at), Some(now)) => now - at <= PROGRAMMATIC_WINDOW_MS,
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
+}
+
 /// Key of the bridge's handle on `window`, which the transition script also
 /// uses to restore scroll between the two snapshots.
 #[cfg(test)]
@@ -223,7 +239,7 @@ while (!disposed) {
 /// [`animated_navigate`]: crate::animated_navigate
 pub fn use_browser_history_transitions<Route>()
 where
-    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+    Route: Routable + RouteTransitions,
 {
     #[cfg(target_arch = "wasm32")]
     web::use_browser_history_transitions::<Route>();
@@ -231,7 +247,9 @@ where
 
 #[cfg(target_arch = "wasm32")]
 mod web {
-    use super::{BROWSER_HISTORY_BRIDGE, Entries, Traversal, traversal_transition};
+    use super::{
+        BROWSER_HISTORY_BRIDGE, Entries, Traversal, is_programmatic, traversal_transition,
+    };
     use crate::{NavigationTransition, RouteTransitions, run_animated_navigation};
     use dioxus::{
         document::eval,
@@ -243,10 +261,6 @@ mod web {
         rc::Rc,
         sync::Arc,
     };
-
-    /// How long after our own `go_back`/`go_forward` a `popstate` is taken to
-    /// be theirs. The caller is already animating those.
-    const PROGRAMMATIC_WINDOW_MS: f64 = 1000.0;
 
     type RouterUpdate = Arc<dyn Fn() + Send + Sync>;
 
@@ -277,11 +291,7 @@ mod web {
         }
 
         fn take_programmatic(&self) -> bool {
-            match (self.programmatic_at.take(), now()) {
-                (Some(at), Some(now)) => now - at <= PROGRAMMATIC_WINDOW_MS,
-                (Some(_), None) => true,
-                _ => false,
-            }
+            is_programmatic(self.programmatic_at.take(), now())
         }
     }
 
@@ -346,7 +356,7 @@ mod web {
 
     pub(super) fn use_browser_history_transitions<Route>()
     where
-        Route: Clone + ToString + RouteTransitions + Routable + 'static,
+        Route: Routable + RouteTransitions,
     {
         let shared = use_hook(|| {
             let inner = history();
@@ -472,6 +482,18 @@ mod tests {
             (history.routes.as_slice(), history.cursor),
             (&["/old".to_string()][..], 0)
         );
+    }
+
+    /// A `popstate` soon after our own `go_back` is ours, and the caller is
+    /// already animating it. One long after, or with no mark, is the user's.
+    #[test]
+    fn only_a_prompt_popstate_after_our_traversal_is_ours() {
+        assert!(is_programmatic(Some(100.0), Some(100.0)));
+        assert!(is_programmatic(Some(100.0), Some(1100.0)));
+        assert!(!is_programmatic(Some(100.0), Some(1100.5)));
+        assert!(!is_programmatic(None, Some(100.0)));
+        assert!(!is_programmatic(None, None));
+        assert!(is_programmatic(Some(100.0), None));
     }
 
     #[derive(PartialEq)]
