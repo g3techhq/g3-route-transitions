@@ -1,5 +1,2 @@
 /target
 /Cargo.lock
-/playground/target
-/playground/dist
-/playground/node_modules
