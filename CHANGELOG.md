@@ -6,6 +6,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A navigation that starts while another is still running, such as a quick
+  second browser Back, keeps its own styling. The first navigation's cleanup
+  used to remove the second's `data-route-transition` attributes before the
+  second captured the old page, so it fell back to the browser's default
+  cross-fade. Only the newest navigation now cleans up, and a Back no longer
+  inherits the skipped navigation's `data-route-transition-to`.
+- Overriding a custom property such as `--route-transition-stack-duration` on
+  `:root` now applies on Material too. The Material defaults were set with a
+  more specific selector than `:root`, so the override only reached iOS. The
+  library's defaults now have zero specificity.
+- The rustdoc of `RouteTransitionPersistent` and
+  `ROUTE_TRANSITION_PERSISTENT_CLASS` said routed sheets paint above persistent
+  chrome. They paint below it, as the README and the stylesheet have said
+  since 0.4.1.
+- `use_native_back_navigation` applies native interception after each render
+  instead of writing its signal while the component renders.
+- `set_platform` applies process-wide. It was thread-local, so a platform set
+  on one thread did not reach navigation started on another.
+
+### Changed
+
+- The navigation functions and hooks need only `Route: Routable +
+  RouteTransitions`; the other bounds were implied by `Routable`.
+- `animated_navigate_with`, which navigates with an explicit transition while
+  keeping the route's history rule, is documented in the README.
+- The navigation docs say what happens to a future whose calling component is
+  unmounted by the navigation it started: it is dropped, so code after the
+  `.await` in a handler on the page being left does not run.
+
+### Deprecated
+
+- `init_auto_platform`. `get_platform` already falls back to
+  `detect_platform`.
+
 ### Internal
 
 - `just check` and `just lint-strict` also build for wasm32, Android and iOS,

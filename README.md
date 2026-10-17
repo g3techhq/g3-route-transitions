@@ -353,8 +353,10 @@ region table, for example
 
 ### Custom properties
 
-Load overrides after the library stylesheet. Scope platform-specific values
-with `html[data-route-transition-platform="ios"]` or `"material"`.
+Set overrides on `:root`. The library's defaults have zero specificity, so
+yours apply on both platforms whatever order the stylesheets load in. Scope a
+platform-specific value with `html[data-route-transition-platform="ios"]` or
+`"material"`.
 
 | Property | Default (iOS / Material) | Controls |
 |---|---|---|
@@ -397,11 +399,35 @@ button {
   pops history, or navigates to `fallback` at the history root.
 - **`try_animated_back()`** pops history and returns `false` when there was
   nothing to pop, so platform Back handlers can keep their own root behavior.
+- **`animated_navigate_with(route, transition)`** runs `transition` instead of
+  the one the rules choose, still pushing or replacing history by the rules.
+  It is for route-encoded UI state whose motion only the caller knows, such as
+  a filter that the rules treat as `None` but one control slides between.
 
-All three must run beneath `Router::<Route>`, and their futures resolve when
-the animation finishes. Internally, JavaScript captures the old page, asks
-Rust to push, replace, or pop the route, waits for the new route to render,
-and then lets the animation run.
+All of them must run beneath `Router::<Route>`. Internally, JavaScript
+captures the old page, asks Rust to push, replace, or pop the route, waits for
+the new route to render, and then lets the animation run.
+
+Their futures resolve when the animation finishes, but only while the task
+awaiting them is alive. An event handler's task belongs to its component, so a
+handler on the page being left is dropped when the navigation unmounts that
+page, and code after its `.await` does not run. Do follow-up work on the
+destination page, or from a component that stays mounted.
+
+### Drawing a long page after the slide
+
+A navigation animates only once the new page has rendered, so whatever the
+page draws first is time between the tap and the first moving frame.
+`use_route_transition_settled()` reads `false` until the transition that
+brought the component in has finished, which lets a long list draw a first
+screenful and the rest afterwards:
+
+```rust,ignore
+let settled = use_route_transition_settled();
+let shown = if settled() { items.len() } else { 8 };
+```
+
+Outside a transition, such as a first load, it settles after two frames.
 
 ## Browser Back and Forward
 

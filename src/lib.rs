@@ -154,6 +154,7 @@ pub use browser_history::use_browser_history_transitions;
 use dioxus::{document::eval, prelude::*};
 pub use g3_route_transitions_macros::RouteTransitions;
 use manganis::{Asset, asset};
+use std::sync::atomic::{AtomicU8, Ordering};
 /// The stylesheet backing every transition. Link it once via
 /// [`RouteTransitionStyles`] (or [`RouteTransitionApp`]), or attach it
 /// yourself if the app manages its own `document::Link` tags.
@@ -195,7 +196,8 @@ pub const ROUTE_TRANSITION_PAGE_CLASS: &str = "route-transition-page";
 /// Class applied by [`RouteTransitionPersistent`].
 ///
 /// The element is always named `persistent` and never animates. It paints
-/// above page snapshots and below a routed sheet. If only one of the two
+/// above every other snapshot, a rising or falling sheet included, so chrome
+/// a sheet should cover must not carry it. If only one of the two
 /// routes renders it, it fades in or out instead. The stylesheet applies no
 /// layout to it. Libraries that only want this behavior at some breakpoints
 /// can set `view-transition-name: persistent` themselves instead of using the
@@ -290,11 +292,13 @@ pub fn RouteTransitionPage(children: Element, class: Option<String>) -> Element 
 /// Chrome that stays exactly where it is during every transition, such as a
 /// desktop navigation rail beside the page.
 ///
-/// It is captured on its own and painted above page snapshots, so it doesn't
-/// slide with the page or dim under a sheet. Routed sheets paint above it.
-/// For it to stay still, the routes on both sides of a transition must
-/// render it in the same place, including sheet routes. If only one side
-/// renders it, it fades. Render at most one at a time.
+/// It is captured on its own and painted above every other snapshot, so it
+/// doesn't slide with the page, dim under a sheet, or get covered by one. Chrome
+/// a sheet should cover, such as a phone's bottom tab bar, belongs in a
+/// [`ROUTE_TRANSITION_PAGE_FRAME_CLASS`] shell instead. For it to stay still,
+/// the routes on both sides of a transition must render it in the same place,
+/// including sheet routes. If only one side renders it, it fades. Render at
+/// most one at a time.
 ///
 /// `class` is appended to [`ROUTE_TRANSITION_PERSISTENT_CLASS`].
 #[component]
@@ -378,23 +382,28 @@ impl Platform {
         }
     }
 }
-thread_local! {
-    static GLOBAL_PLATFORM: std::cell::Cell<Option<Platform>> = const {
-        std::cell::Cell::new(None)
-    };
-}
+/// The platform set by [`set_platform`]: `0` until it is called, then `1` for
+/// iOS or `2` for Material. Process-wide, so a platform set on one thread
+/// applies to navigation started on another.
+static GLOBAL_PLATFORM: AtomicU8 = AtomicU8::new(0);
 /// Explicitly set the platform used to pick a transition's visual style.
 /// Call this once at startup and again whenever the app's platform mode
 /// changes (e.g. a user-facing iOS/Material style toggle).
 pub fn set_platform(platform: Platform) {
-    GLOBAL_PLATFORM.with(|p| p.set(Some(platform)));
+    let value = match platform {
+        Platform::Ios => 1,
+        Platform::Material => 2,
+    };
+    GLOBAL_PLATFORM.store(value, Ordering::Relaxed);
 }
 /// The platform currently used to style transitions. Falls back to
 /// compile-time/runtime auto-detection if [`set_platform`] was never called.
 pub fn get_platform() -> Platform {
-    GLOBAL_PLATFORM
-        .with(|p| p.get())
-        .unwrap_or_else(detect_platform)
+    match GLOBAL_PLATFORM.load(Ordering::Relaxed) {
+        1 => Platform::Ios,
+        2 => Platform::Material,
+        _ => detect_platform(),
+    }
 }
 /// Detect a reasonable default platform from `cfg(target_os)` (native
 /// mobile builds) or, on wasm, from the user agent.
@@ -439,8 +448,13 @@ fn detect_platform_web() -> Platform {
     }
 }
 /// Initialize the global platform from compile-time/runtime auto-detection.
-/// Prefer calling [`set_platform`] directly when the host app already tracks
-/// an explicit iOS/Material mode.
+///
+/// Unnecessary: [`get_platform`] already falls back to [`detect_platform`]
+/// when [`set_platform`] was never called.
+#[deprecated(
+    since = "0.4.5",
+    note = "get_platform() already falls back to detect_platform(); remove the call"
+)]
 pub fn init_auto_platform() {
     set_platform(detect_platform());
 }
@@ -541,6 +555,12 @@ const ANIMATION_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_ANIMATION__";
 const PLATFORM_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_PLATFORM__";
 const FROM_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_FROM__\"";
 const TO_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_TO__\"";
+const SURFACE_SELECTOR_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_SURFACE_SELECTOR__\"";
+/// The selector the script reads the app's surface color from, built from the
+/// class constants so the two cannot drift apart.
+fn surface_selector() -> String {
+    format!(".{ROUTE_TRANSITION_PAGE_CLASS}, .{ROUTE_TRANSITION_BASE_REGION_CLASS}")
+}
 const VIEW_TRANSITION_NAVIGATE: &str = r#"
 const animation = "__DX_ROUTE_TRANSITION_ANIMATION__";
 const platform = "__DX_ROUTE_TRANSITION_PLATFORM__";
@@ -550,6 +570,8 @@ const platform = "__DX_ROUTE_TRANSITION_PLATFORM__";
 // involved - one sheet opening can want an element lifted that another does not.
 const from = "__DX_ROUTE_TRANSITION_FROM__";
 const to = "__DX_ROUTE_TRANSITION_TO__";
+// The regions whose background is the app's surface, page first.
+const surfaceSelector = "__DX_ROUTE_TRANSITION_SURFACE_SELECTOR__";
 const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
 
 // View-transition snapshots are painted in a document-level pseudo tree. They
@@ -564,7 +586,7 @@ const dxRouteTransitionOpaqueBackground = (element) => {
 };
 const dxRouteTransitionSurfaceBackground = () => {
     const root = document.documentElement;
-    const surface = document.querySelector(".route-transition-page, .route-transition-base-region");
+    const surface = document.querySelector(surfaceSelector);
     return dxRouteTransitionOpaqueBackground(surface)
         ?? dxRouteTransitionOpaqueBackground(document.body)
         ?? dxRouteTransitionOpaqueBackground(root)
@@ -572,7 +594,7 @@ const dxRouteTransitionSurfaceBackground = () => {
 };
 const dxRouteTransitionPaintContext = () => {
     const root = document.documentElement;
-    const surface = document.querySelector(".route-transition-page, .route-transition-base-region");
+    const surface = document.querySelector(surfaceSelector);
     const surfaceBackground = dxRouteTransitionSurfaceBackground();
     const documentBackground = dxRouteTransitionOpaqueBackground(document.body)
         ?? dxRouteTransitionOpaqueBackground(root)
@@ -636,6 +658,14 @@ const dxRouteTransitionRouteRendered = () => new Promise((resolve) => {
     if (!observer) finish();
 });
 
+// A navigation that starts while another is running skips the older one, whose
+// cleanup then runs while the newer one is still waiting to capture the old
+// page. The attributes and properties on <html> belong to the newest run, and
+// only that run may remove them.
+const runKey = Symbol.for("g3-route-transitions.navigation");
+const run = {};
+window[runKey] = run;
+
 try {
     if (!document.startViewTransition || prefersReducedMotion) {
         dioxus.send("navigate");
@@ -643,8 +673,12 @@ try {
     } else {
         document.documentElement.dataset.routeTransition = animation;
         document.documentElement.dataset.routeTransitionPlatform = platform;
+        // Set or cleared, so nothing is inherited from a run this one skipped.
         if (from) document.documentElement.dataset.routeTransitionFrom = from;
+        else delete document.documentElement.dataset.routeTransitionFrom;
         if (to) document.documentElement.dataset.routeTransitionTo = to;
+        else delete document.documentElement.dataset.routeTransitionTo;
+        document.documentElement.style.removeProperty("--route-transition-incoming-surface-bg");
         dxRouteTransitionPaintContext();
 
         // The outgoing snapshot is taken synchronously inside
@@ -710,14 +744,17 @@ try {
 } catch (_) {
     dioxus.send("fallback");
 } finally {
-    delete document.documentElement.dataset.routeTransition;
-    delete document.documentElement.dataset.routeTransitionPlatform;
-    delete document.documentElement.dataset.routeTransitionFrom;
-    delete document.documentElement.dataset.routeTransitionTo;
-    document.documentElement.style.removeProperty("--route-transition-surface-bg");
-    document.documentElement.style.removeProperty("--route-transition-incoming-surface-bg");
-    document.documentElement.style.removeProperty("--route-transition-document-bg");
-    document.documentElement.style.removeProperty("--route-transition-clip-radius");
+    if (window[runKey] === run) {
+        delete window[runKey];
+        delete document.documentElement.dataset.routeTransition;
+        delete document.documentElement.dataset.routeTransitionPlatform;
+        delete document.documentElement.dataset.routeTransitionFrom;
+        delete document.documentElement.dataset.routeTransitionTo;
+        document.documentElement.style.removeProperty("--route-transition-surface-bg");
+        document.documentElement.style.removeProperty("--route-transition-incoming-surface-bg");
+        document.documentElement.style.removeProperty("--route-transition-document-bg");
+        document.documentElement.style.removeProperty("--route-transition-clip-radius");
+    }
 }
 "#;
 /// `value` as a double-quoted JavaScript string literal.
@@ -744,17 +781,30 @@ fn js_string_literal(value: &str) -> String {
     literal.push('"');
     literal
 }
+/// [`VIEW_TRANSITION_NAVIGATE`] with every placeholder filled in.
+fn navigate_script(
+    animation: NavigationTransition,
+    platform: Platform,
+    from: &str,
+    to: Option<&str>,
+) -> String {
+    VIEW_TRANSITION_NAVIGATE
+        .replace(ANIMATION_PLACEHOLDER, animation.data_value())
+        .replace(PLATFORM_PLACEHOLDER, platform.data_value())
+        .replace(FROM_PLACEHOLDER, &js_string_literal(from))
+        .replace(TO_PLACEHOLDER, &js_string_literal(to.unwrap_or_default()))
+        .replace(
+            SURFACE_SELECTOR_PLACEHOLDER,
+            &js_string_literal(&surface_selector()),
+        )
+}
 async fn run_animated_navigation(
     animation: NavigationTransition,
     from: &str,
     to: Option<&str>,
     mut navigate: impl FnMut(),
 ) {
-    let script = VIEW_TRANSITION_NAVIGATE
-        .replace(ANIMATION_PLACEHOLDER, animation.data_value())
-        .replace(PLATFORM_PLACEHOLDER, get_platform().data_value())
-        .replace(FROM_PLACEHOLDER, &js_string_literal(from))
-        .replace(TO_PLACEHOLDER, &js_string_literal(to.unwrap_or_default()));
+    let script = navigate_script(animation, get_platform(), from, to);
     let mut transition = eval(&script);
     let mut navigated = false;
     loop {
@@ -785,52 +835,46 @@ async fn run_animated_navigation(
 /// be used instead of `navigator().push(...)`. The call does nothing if
 /// `route` equals the current route. It changes the route without animation
 /// when the transition is [`NavigationTransition::None`], the browser lacks
-/// View Transitions, or the user prefers reduced motion. The future resolves
-/// once the animation has finished.
+/// View Transitions, or the user prefers reduced motion.
 ///
 /// Call it from an event handler, for example
 /// `onclick: move |_| async move { animated_navigate(Route::Home {}).await }`.
 /// It must run beneath `Router::<Route>`.
+///
+/// The future resolves once the animation has finished, but only if the task
+/// awaiting it survives that long. An event handler's task belongs to its
+/// component, and the component on the page being left is unmounted by the
+/// navigation, which drops the task: code after the `.await` in a handler on
+/// the old page does not run. Do follow-up work on the destination page, or
+/// in a task owned by a component that stays mounted.
 pub async fn animated_navigate<Route>(route: Route)
 where
-    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+    Route: Routable + RouteTransitions,
 {
-    let current_route = router().current::<Route>().clone();
-    if current_route == route {
-        return;
-    }
+    let current_route = router().current::<Route>();
     let animation = current_route.transition_to(&route);
-    let replace = current_route.replaces_history(&route);
-    let navigator = navigator();
-    let from = current_route.to_string();
-    let route = route.to_string();
-    if animation == NavigationTransition::None {
-        if replace {
-            _ = navigator.replace(route);
-        } else {
-            _ = navigator.push(route);
-        }
-        return;
-    }
-    run_animated_navigation(animation, &from, Some(&route.clone()), || {
-        if replace {
-            _ = navigator.replace(route.clone());
-        } else {
-            _ = navigator.push(route.clone());
-        }
-    })
-    .await;
+    navigate_from(current_route, route, animation).await;
 }
-
-/// Navigate with an explicit transition while preserving the route's history
-/// replacement rule. This is for UI state encoded in a route (for example a
-/// segmented filter) whose visual relationship is known by the caller even
-/// when the route taxonomy deliberately treats the update as `None`.
+/// Navigate to `route` with `animation` instead of the one the route rules
+/// choose, still pushing or replacing history by
+/// `current.replaces_history(&route)`.
+///
+/// This is for UI state encoded in a route whose visual relationship only the
+/// caller knows, such as a filter the route rules deliberately treat as
+/// [`NavigationTransition::None`] but one control slides between. Otherwise it
+/// behaves exactly like [`animated_navigate`], including doing nothing when
+/// `route` is current. It must run beneath `Router::<Route>`.
 pub async fn animated_navigate_with<Route>(route: Route, animation: NavigationTransition)
 where
-    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+    Route: Routable + RouteTransitions,
 {
-    let current_route = router().current::<Route>().clone();
+    navigate_from(router().current::<Route>(), route, animation).await;
+}
+/// The shared body of [`animated_navigate`] and [`animated_navigate_with`].
+async fn navigate_from<Route>(current_route: Route, route: Route, animation: NavigationTransition)
+where
+    Route: Routable + RouteTransitions,
+{
     if current_route == route {
         return;
     }
@@ -838,22 +882,18 @@ where
     let navigator = navigator();
     let from = current_route.to_string();
     let route = route.to_string();
-    if animation == NavigationTransition::None {
-        if replace {
-            _ = navigator.replace(route);
-        } else {
-            _ = navigator.push(route);
-        }
-        return;
-    }
-    run_animated_navigation(animation, &from, Some(&route.clone()), || {
+    let commit = || {
         if replace {
             _ = navigator.replace(route.clone());
         } else {
             _ = navigator.push(route.clone());
         }
-    })
-    .await;
+    };
+    if animation == NavigationTransition::None {
+        commit();
+        return;
+    }
+    run_animated_navigation(animation, &from, Some(&route), commit).await;
 }
 /// Pop real router history with `current.transition_back()`.
 ///
@@ -862,15 +902,17 @@ where
 ///
 /// Returns `false` without doing anything when there is no previous entry, so
 /// callers such as platform Back handlers can keep their own root behavior.
+/// It must run beneath `Router::<Route>`, and its future is dropped with the
+/// calling component just as [`animated_navigate`]'s is.
 pub async fn try_animated_back<Route>() -> bool
 where
-    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+    Route: Routable + RouteTransitions,
 {
     let navigator = navigator();
     if !navigator.can_go_back() {
         return false;
     }
-    let current_route = router().current::<Route>().clone();
+    let current_route = router().current::<Route>();
     let animation = current_route.transition_back();
     if animation == NavigationTransition::None {
         navigator.go_back();
@@ -886,10 +928,11 @@ where
 ///
 /// Use this for visible Back buttons. When falling back, the transition comes
 /// from the forward rules (`current.transition_to(&fallback)`), so a stack
-/// page returning to its root still animates `Backward`.
+/// page returning to its root still animates `Backward`. It must run beneath
+/// `Router::<Route>`.
 pub async fn animated_back_or_navigate<Route>(fallback: Route)
 where
-    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+    Route: Routable + RouteTransitions,
 {
     if !try_animated_back::<Route>().await {
         animated_navigate(fallback).await;
@@ -1033,7 +1076,7 @@ await released;
 #[cfg(feature = "native-back")]
 pub fn use_native_back_navigation<Route>()
 where
-    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+    Route: Routable + RouteTransitions,
 {
     use_native_back_navigation_with_interception::<Route>(false);
 }
@@ -1048,23 +1091,36 @@ where
 #[cfg(feature = "native-back")]
 pub fn use_native_back_navigation_with_interception<Route>(intercept_without_history: bool)
 where
-    Route: Clone + ToString + RouteTransitions + Routable + 'static,
+    Route: Routable + RouteTransitions,
 {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         use g3_native_plugins::{BackButton, NativePlugins};
+        use std::{cell::Cell, rc::Rc};
+        // Subscribes this component to the route, so it re-renders, and the
+        // interception below is re-applied, whenever history changes.
         let _current_route: Route = use_route();
         let navigator = navigator();
         let standalone = use_signal(BackButton::new);
-        let mut back_button = try_consume_context::<NativePlugins>()
-            .map(|plugins| plugins.back_button)
-            .unwrap_or(standalone);
-        let intercepting = navigator.can_go_back() || intercept_without_history;
-        {
-            let mut back_button = back_button.write();
-            let _ = back_button.prepare();
-            let _ = back_button.set_intercepting(intercepting);
-        }
+        let mut back_button = use_hook(|| {
+            try_consume_context::<NativePlugins>()
+                .map(|plugins| plugins.back_button)
+                .unwrap_or(standalone)
+        });
+        // The argument is a plain value, so the after-render callback, which is
+        // registered once, reads the latest one from here.
+        let intercept_at_root = use_hook(|| Rc::new(Cell::new(intercept_without_history)));
+        intercept_at_root.set(intercept_without_history);
+        // Native calls and the signal write wait until the render is done.
+        dioxus::core::use_after_render({
+            let intercept_at_root = intercept_at_root.clone();
+            move || {
+                let intercepting = navigator.can_go_back() || intercept_at_root.get();
+                let mut back_button = back_button.write();
+                let _ = back_button.prepare();
+                let _ = back_button.set_intercepting(intercepting);
+            }
+        });
         use_future(move || async move {
             let script = NATIVE_BACK_NAVIGATION_BRIDGE
                 .replace(
@@ -1170,26 +1226,6 @@ mod tests {
         assert!(base_group.contains("z-index: 0"));
         assert!(page_group.contains("z-index: 1"));
     }
-    #[test]
-    fn snapshot_marker_components_are_public_contract() {
-        let source = include_str!("lib.rs");
-        let production_source = source
-            .split("#[cfg(test)]")
-            .next()
-            .expect("production source precedes tests");
-        assert!(production_source.contains("pub const ROUTE_TRANSITION_BASE_REGION_CLASS"));
-        assert!(production_source.contains("pub const ROUTE_TRANSITION_OVERLAY_REGION_CLASS"));
-        assert!(production_source.contains("pub const ROUTE_TRANSITION_SEGMENT_CLASS"));
-        assert!(production_source.contains("pub const ROUTE_TRANSITION_PAGE_CLASS"));
-        assert!(production_source.contains("pub fn RouteTransitionBaseRegion"));
-        assert!(production_source.contains("pub fn RouteTransitionOverlayRegion"));
-        assert!(production_source.contains("pub fn RouteTransitionSegment"));
-        assert!(production_source.contains("pub fn RouteTransitionPage"));
-        assert!(production_source.contains("pub const ROUTE_TRANSITION_PERSISTENT_CLASS"));
-        assert!(production_source.contains("pub const ROUTE_TRANSITION_PAGE_FRAME_CLASS"));
-        assert!(production_source.contains("pub fn RouteTransitionPersistent"));
-        assert!(production_source.contains("merge_transition_class"));
-    }
     /// Persistent chrome never moves, stays above every other snapshot
     /// including a routed sheet, and fades instead of popping when only one
     /// route renders it.
@@ -1242,15 +1278,6 @@ mod tests {
         assert!(stylesheet.contains(".route-transition-page .route-transition-segment"));
         assert!(stylesheet.contains("view-transition-old(page)"));
         assert!(stylesheet.contains("view-transition-new(page)"));
-    }
-    #[test]
-    fn route_transition_app_wraps_styles_and_overlay_region() {
-        let source = include_str!("lib.rs");
-        assert!(source.contains("pub fn RouteTransitionApp"));
-        assert!(source.contains("RouteTransitionStyles"));
-        assert!(source.contains("ROUTE_TRANSITION_OVERLAY_REGION_CLASS"));
-        assert!(source.contains("merge_transition_class(ROUTE_TRANSITION_OVERLAY_REGION_CLASS"));
-        assert!(source.contains("div { class, {children} }"));
     }
     #[test]
     fn style_is_flushed_before_the_outgoing_snapshot_is_taken() {
@@ -1321,7 +1348,10 @@ mod tests {
             paint_context < capture,
             "paint context must precede capture"
         );
-        assert!(script.contains(".route-transition-page, .route-transition-base-region"));
+        let filled = navigate_script(NavigationTransition::Forward, Platform::Ios, "/", None);
+        assert!(filled.contains(
+            r#"const surfaceSelector = ".route-transition-page, .route-transition-base-region";"#
+        ));
         assert!(script.contains("--route-transition-surface-bg"));
         assert!(script.contains("--route-transition-incoming-surface-bg"));
         assert!(script.contains("--route-transition-document-bg"));
@@ -1432,45 +1462,39 @@ mod tests {
         assert!(cleanup.contains("delete document.documentElement.dataset.routeTransitionFrom;"));
         assert!(cleanup.contains("delete document.documentElement.dataset.routeTransitionTo;"));
     }
+    /// A second navigation skips the first, whose cleanup then runs before the
+    /// second has captured the old page. Removing the attributes there would
+    /// leave the second transition unstyled.
+    #[test]
+    fn only_the_newest_navigation_cleans_up() {
+        let script = VIEW_TRANSITION_NAVIGATE;
+        let claimed = script
+            .find("window[runKey] = run;")
+            .expect("each run claims the document");
+        let started = script
+            .find("document.startViewTransition(async () =>")
+            .expect("the transition is started");
+        assert!(claimed < started, "claim before the transition starts");
+        let cleanup = script
+            .split("} finally {")
+            .nth(1)
+            .expect("the script cleans up");
+        let owned = cleanup
+            .find("if (window[runKey] === run) {")
+            .expect("cleanup checks ownership");
+        let removed = cleanup
+            .find("delete document.documentElement.dataset.routeTransition;")
+            .expect("cleanup removes the transition attribute");
+        assert!(owned < removed, "remove only what this run owns");
+        // A skipped run's destination must not leak into a Back, which has none.
+        assert!(script.contains("else delete document.documentElement.dataset.routeTransitionTo;"));
+    }
     #[test]
     fn route_paths_are_escaped_into_string_literals() {
         assert_eq!(js_string_literal("/watch/abc"), "\"/watch/abc\"");
         assert_eq!(js_string_literal("a\"b\\c"), "\"a\\\"b\\\\c\"");
         assert_eq!(js_string_literal("a\nb\u{2028}"), "\"a\\nb\\u2028\"");
         assert_eq!(js_string_literal(""), "\"\"");
-    }
-    #[test]
-    fn rust_side_acknowledges_navigation_after_router_push() {
-        let source = include_str!("lib.rs");
-        let production_source = source
-            .split("#[cfg(test)]")
-            .next()
-            .expect("production source precedes tests");
-        assert!(production_source.contains("Ok(\"navigate\")"));
-        assert!(production_source.contains("transition.send(\"navigated\")"));
-        assert!(!production_source.contains("eprintln!"));
-    }
-    #[test]
-    fn history_back_uses_the_view_transition_handshake() {
-        let source = include_str!("lib.rs");
-        let production_source = source
-            .split("#[cfg(test)]")
-            .next()
-            .expect("production source precedes tests");
-        let helper = production_source
-            .split("pub async fn try_animated_back")
-            .nth(1)
-            .expect("try_animated_back is public");
-        assert!(helper.contains("navigator.can_go_back()"));
-        assert!(helper.contains("current_route.transition_back()"));
-        assert!(helper.contains("run_animated_navigation(animation"));
-        assert!(helper.contains("navigator.go_back()"));
-        let fallback_helper = production_source
-            .split("pub async fn animated_back_or_navigate")
-            .nth(1)
-            .expect("animated_back_or_navigate is public");
-        assert!(fallback_helper.contains("try_animated_back::<Route>().await"));
-        assert!(fallback_helper.contains("animated_navigate(fallback).await"));
     }
     #[cfg(feature = "native-back")]
     #[test]
@@ -1520,21 +1544,6 @@ mod tests {
         assert!(!production_source.contains("native-back\", target_os = \"android\")"));
     }
     #[test]
-    fn in_place_routes_replace_history_without_crossing_the_js_boundary() {
-        let source = include_str!("lib.rs");
-        let production_source = source
-            .split("#[cfg(test)]")
-            .next()
-            .expect("production source precedes tests");
-        let helper = production_source
-            .split("pub async fn animated_navigate")
-            .nth(1)
-            .expect("animated_navigate is public");
-        assert!(helper.contains("current_route.replaces_history(&route)"));
-        assert!(helper.contains("navigator.replace(route)"));
-        assert!(helper.contains("animation == NavigationTransition::None"));
-    }
-    #[test]
     fn a_cross_dissolve_never_uncovers_what_is_behind_the_page() {
         let stylesheet = include_str!("../assets/route_transitions.css");
         assert!(
@@ -1562,6 +1571,22 @@ mod tests {
         assert!(!stylesheet.contains("route-transition-mobile-undim-base"));
         assert!(!stylesheet.contains("morph"));
         assert!(!stylesheet.contains("zoom"));
+    }
+    /// An app's `:root { --route-transition-stack-duration: .. }` must win on
+    /// both platforms. A plain `html[data-route-transition-platform=..]` block
+    /// outranks `:root`, so the Material defaults silently ignored it.
+    #[test]
+    fn custom_property_defaults_yield_to_an_apps_root_overrides() {
+        let stylesheet = include_str!("../assets/route_transitions.css");
+        let ios = stylesheet
+            .find(":where(:root) {")
+            .expect("the defaults have zero specificity");
+        let material = stylesheet
+            .find(":where(html[data-route-transition-platform=\"material\"]) {")
+            .expect("the Material defaults have zero specificity");
+        assert!(ios < material, "Material must come later to win a tie");
+        assert!(!stylesheet.contains("\n:root {"));
+        assert!(!stylesheet.contains("\nhtml[data-route-transition-platform=\"material\"] {"));
     }
     #[test]
     fn stack_transitions_diverge_between_ios_parallax_and_material_shared_axis() {
@@ -1705,14 +1730,12 @@ mod tests {
             !VIEW_TRANSITION_NAVIGATE[..start].contains("await dioxus.recv()"),
             "no round trip may precede the snapshot",
         );
-        let filled = VIEW_TRANSITION_NAVIGATE
-            .replace(
-                ANIMATION_PLACEHOLDER,
-                NavigationTransition::PresentSheet.data_value(),
-            )
-            .replace(PLATFORM_PLACEHOLDER, Platform::Ios.data_value())
-            .replace(FROM_PLACEHOLDER, &js_string_literal("/queue"))
-            .replace(TO_PLACEHOLDER, &js_string_literal("/watch/abc"));
+        let filled = navigate_script(
+            NavigationTransition::PresentSheet,
+            Platform::Ios,
+            "/queue",
+            Some("/watch/abc"),
+        );
         assert!(filled.contains(r#"const animation = "present-sheet";"#));
         assert!(filled.contains(r#"const platform = "ios";"#));
         assert!(filled.contains(r#"const from = "/queue";"#));
@@ -1778,18 +1801,21 @@ mod tests {
     /// The helpers run inside spawned futures, where hooks must not be called.
     #[test]
     fn navigation_helpers_do_not_call_hooks() {
-        let source = include_str!("lib.rs");
+        // A CRLF checkout would otherwise never find the end of a body.
+        let source = include_str!("lib.rs").replace("\r\n", "\n");
         for helper in [
-            "pub async fn animated_navigate",
-            "pub async fn try_animated_back",
+            "pub async fn animated_navigate<",
+            "pub async fn animated_navigate_with<",
+            "async fn navigate_from<",
+            "pub async fn try_animated_back<",
+            "pub async fn animated_back_or_navigate<",
         ] {
             let body = source
                 .split(helper)
                 .nth(1)
                 .and_then(|rest| rest.split("\n}\n").next())
                 .expect("helper is present");
-            assert!(!body.contains("use_navigator"), "{helper} calls a hook");
-            assert!(body.contains("navigator()"));
+            assert!(!body.contains("use_"), "{helper} calls a hook");
         }
     }
 }
