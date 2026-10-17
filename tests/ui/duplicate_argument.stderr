@@ -1,0 +1,5 @@
+error: duplicate transition argument `layer`
+ --> tests/ui/duplicate_argument.rs:5:33
+  |
+5 |     #[transition(layer = sheet, layer = stack_page)]
+  |                                 ^^^^^

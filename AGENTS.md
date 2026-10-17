@@ -33,6 +33,8 @@ src/lib.rs              Transition rules, animated navigation, snapshot-region
 src/browser_history.rs  use_browser_history_transitions: animated browser Back/Forward
 macros/src/lib.rs       #[derive(RouteTransitions)]: parses #[transition(..)] into metadata
 tests/route_metadata.rs The rule table, tested against a real Route enum
+tests/navigation.rs     The navigation functions beneath a real router (no renderer)
+tests/compile_fail.rs   Every derive error, with expected output in tests/ui/
 assets/route_transitions.css  The transition keyframes and snapshot styling
 README.md               The reference: options, rule table, regions, Back behaviour
 CHANGELOG.md            Every user-visible change, under [Unreleased] until a release

@@ -1,0 +1,5 @@
+error: a route cannot hand off from itself; use `history = replace` for same-variant updates
+ --> tests/ui/handoff_from_self.rs:5:33
+  |
+5 |     #[transition(handoff_from = Home)]
+  |                                 ^^^^

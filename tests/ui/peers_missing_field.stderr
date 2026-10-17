@@ -1,0 +1,5 @@
+error: peers field `tab` is not a field of this route variant
+ --> tests/ui/peers_missing_field.rs:5:46
+  |
+5 |     #[transition(peers(group = tabs, order = tab))]
+  |                                              ^^^

@@ -1,0 +1,5 @@
+error: unknown transition layer; expected base, stack_root, stack_page, or sheet
+ --> tests/ui/unknown_layer.rs:5:26
+  |
+5 |     #[transition(layer = modal)]
+  |                          ^^^^^

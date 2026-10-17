@@ -1,0 +1,5 @@
+error: forward_to target is not a route variant
+ --> tests/ui/forward_to_unknown.rs:5:31
+  |
+5 |     #[transition(forward_to = Missing)]
+  |                               ^^^^^^^
