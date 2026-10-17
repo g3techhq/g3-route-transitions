@@ -278,3 +278,33 @@ mod documented_rules {
         assert_eq!(Route::PageB {}.transition_back(), T::Backward);
     }
 }
+
+/// The derive carries the enum's generics onto its impl, and its helpers do
+/// not collide with names the enum's module already uses.
+mod generic_routes {
+    use g3_route_transitions::{NavigationTransition as T, RouteTransitions};
+
+    #[allow(dead_code)]
+    fn layer() {}
+    #[allow(dead_code)]
+    struct Ordering;
+
+    #[derive(PartialEq, RouteTransitions)]
+    enum Route<Id: PartialEq + Ord> {
+        #[transition(layer = stack_root)]
+        List {},
+        #[transition(layer = stack_page, peers(group = items, order = id))]
+        Item { id: Id },
+    }
+
+    #[test]
+    fn generic_route_enums_derive() {
+        let list = Route::<u8>::List {};
+        assert_eq!(list.transition_to(&Route::Item { id: 1 }), T::Forward);
+        assert_eq!(
+            Route::Item { id: 1u8 }.transition_to(&Route::Item { id: 2 }),
+            T::Forward
+        );
+        assert_eq!(Route::Item { id: 2u8 }.transition_back(), T::Backward);
+    }
+}
