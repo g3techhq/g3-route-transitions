@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-18
+
 ### Changed (breaking)
 
 Renamed so that each name means one thing. The README's "Migrating from 0.4"
