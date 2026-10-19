@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A base region inside a page region (a tab's body under its header) takes the
+  height left under the header instead of the full viewport. The end of a long
+  page no longer sits past the bottom of the screen, which apps had to work
+  around with their own CSS.
+
 ## [0.5.0] - 2026-10-18
 
 ### Changed (breaking)

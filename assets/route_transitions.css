@@ -82,6 +82,12 @@ html[data-route-transition]::view-transition {
    base/segment layout. */
 .route-transition-page-region > .route-transition-base-region {
     view-transition-name: none;
+    /* Under a page's own header the base region takes the remaining height,
+       not the full viewport its standalone rule asks for. A full viewport
+       below a header pushes the end of the page past the bottom of the
+       screen, out of reach of its own scroll area. */
+    min-height: 0;
+    flex: 1 1 auto;
 }
 
 html[data-route-transition="forward"] .route-transition-page-region,
