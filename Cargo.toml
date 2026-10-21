@@ -25,6 +25,8 @@ g3-native-plugins = { version = "0.4.0", default-features = false, optional = tr
 [features]
 default = []
 native-back = ["dep:g3-native-plugins", "g3-native-plugins/back-button"]
+# Log how long each phase of every animated navigation took, through `tracing`.
+timing = ["dioxus/logger"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3.102", features = ["Navigator", "Performance", "Window"] }

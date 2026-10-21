@@ -53,6 +53,9 @@ Enable `native-back` to animate the native Back action on Android and iOS:
 g3-route-transitions = { version = "0.5", features = ["native-back"] }
 ```
 
+Enable `timing` in development to log where each navigation's time goes; see
+[Measuring a transition](#measuring-a-transition).
+
 ## Quick start
 
 ```rust,ignore
@@ -430,6 +433,47 @@ let shown = if settled() { items.len() } else { 8 };
 ```
 
 Outside a transition, such as a first load, it settles after two frames.
+
+### Measuring a transition
+
+Enable `timing` in a development build to log how long each phase of every
+animated navigation took:
+
+```toml
+g3-route-transitions = { version = "0.5", features = ["timing"] }
+```
+
+Each navigation logs one line at `info` level through `tracing`, with the
+target `g3_route_transitions`. `dioxus::launch` already prints these, so on a
+phone the lines appear in `dx serve`'s output:
+
+```text
+forward /playlists -> /playlists/watch-later (material): animated; input to script 41ms, old page captured 5ms, route acknowledged 11ms, route rendered (structure) 11ms, new page captured 8ms, input to motion 81ms, animation 331ms, 40 frames (121 fps), longest frame 8ms
+```
+
+| Phase | What it covers |
+| --- | --- |
+| input to script | From the latest tap or key press to the script starting: the event reaching Rust, the handler, and the script reaching the web view |
+| old page captured | Waiting for a frame in which to snapshot the old page |
+| route acknowledged | One round trip from the web view to Rust and back |
+| route rendered | From asking for the route to its arrival in the DOM. `structure` or `text` names the change that ended the wait. `ceiling` means none did within 120ms (300ms on desktop and mobile, where only the route's own Dioxus edits count), so the old page was probably captured as the new one |
+| new page captured | From the new route to the first moving frame |
+| input to motion | The whole delay the user feels. Reads `script to motion` when no input came just before |
+| animation | From the first moving frame to the end |
+| frames | How many frames the animation drew, the rate that works out to, and the longest gap between two frames. A long frame is a visible stutter |
+
+The word after the route names a navigation that did not animate:
+`skipped: AbortError` (a newer navigation took over), `skipped:
+InvalidStateError` (two elements share a snapshot name), `skipped: the page
+never painted`, `instant: reduced motion`, or `instant: no View Transitions`.
+`edits applied on arrival` appears on Linux desktop, where the transition has
+Dioxus apply the new route's DOM edits immediately instead of on the next frame,
+which never comes while a transition waits. Other platforms already apply them
+immediately.
+
+The same phases are written to the browser's performance timeline as
+`route transition: ...` measures, for Safari's Web Inspector or Chrome
+DevTools.
 
 ## Browser Back and Forward
 

@@ -527,6 +527,9 @@ pub trait RouteTransitions: PartialEq {
 /// [`RouteTransitionApp`], which includes it. It provides no context.
 #[component]
 pub fn RouteTransitionStyles(children: Element) -> Element {
+    // Started here so the first navigation already knows when its tap was.
+    #[cfg(feature = "timing")]
+    use_hook(timing::listen);
     rsx! {
         document::Link { rel: "stylesheet", href: ROUTE_TRANSITIONS_CSS }
         {children}
@@ -565,6 +568,8 @@ const PLATFORM_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_PLATFORM__";
 const FROM_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_FROM__\"";
 const TO_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_TO__\"";
 const SURFACE_SELECTOR_PLACEHOLDER: &str = "\"__DX_ROUTE_TRANSITION_SURFACE_SELECTOR__\"";
+/// `true` with the `timing` feature, so the script reports its timings.
+const TIMING_PLACEHOLDER: &str = "__DX_ROUTE_TRANSITION_TIMING__";
 /// The selector the script reads the app's surface color from, built from the
 /// class constants so the two cannot drift apart.
 fn surface_selector() -> String {
@@ -582,6 +587,15 @@ const to = "__DX_ROUTE_TRANSITION_TO__";
 // The regions whose background is the app's surface, page first.
 const surfaceSelector = "__DX_ROUTE_TRANSITION_SURFACE_SELECTOR__";
 const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+
+// When each phase of this navigation happened, and how it went. With the
+// `timing` feature they are reported once the navigation ends.
+const timing = __DX_ROUTE_TRANSITION_TIMING__;
+const times = { script: performance.now() };
+const mark = (phase) => {
+    times[phase] = performance.now();
+};
+const details = { outcome: "animated", rendered: null, edits: null, frames: null };
 
 // View-transition snapshots are painted in a document-level pseudo tree. They
 // do not inherit a theme that is scoped to an app shell, and they are not
@@ -647,25 +661,208 @@ const UNPAINTED_PAGE_MS = 1000;
 // There is deliberately no requestAnimationFrame fallback: rendering is paused
 // inside a view transition's update callback, so frames do not tick and it
 // could never fire.
-const dxRouteTransitionRouteRendered = () => new Promise((resolve) => {
+//
+// `done` resolves with what ended the wait: "structure", "text", or "ceiling".
+// Structure and text count, but not attributes: an attribute tick from a
+// progress bar is not the route arriving. Text has to count, because a route
+// that keeps the same structure, such as one details page to the next, changes
+// only text and would otherwise always wait out the ceiling.
+//
+// Given the native interpreter, only a batch of Dioxus edits applied after
+// `acknowledged()` counts, and the ceiling starts then. Rust acknowledges the
+// request before it renders the route and sends edits on a channel of their
+// own, so the first batch applied after the acknowledgement is the route, and
+// any batch applied before it comes from an earlier render: usually the tap's
+// own, a pressed button or a player picking up the tapped video. Changes made
+// by the page's own scripts, such as a pull-to-refresh label, never count.
+// Counting either kind captured the old page as the new one, and Chrome then
+// skips the transition when the route lands under it. Because only the route
+// can end the wait, its ceiling is longer: a slow route waits a moment more
+// rather than animating the wrong page.
+//
+// On the web the route renders in the same turn as the acknowledgement and is
+// observed before it, so any change after the request counts.
+const ROUTE_CEILING_MS = 120;
+const NATIVE_ROUTE_CEILING_MS = 300;
+const dxRouteTransitionRouteRendered = (interpreter) => {
+    const native = typeof interpreter?.run_from_bytes === "function";
     let settled = false;
-    const finish = () => {
+    let acked = !native;
+    let ceiling = null;
+    let resolveDone;
+    const done = new Promise((resolve) => {
+        resolveDone = resolve;
+    });
+    const how = (records) => records.some((record) => record.type === "childList") ? "structure" : "text";
+    const apply = native ? interpreter.run_from_bytes : null;
+    const observedApply = function (bytes) {
+        if (settled) return apply.call(this, bytes);
+        // Whatever is pending was changed by something other than this batch.
+        observer?.takeRecords?.();
+        const result = apply.call(this, bytes);
+        const records = observer?.takeRecords?.() ?? [];
+        if (acked && records.length > 0) finish(how(records));
+        return result;
+    };
+    const finish = (reason) => {
         if (settled) return;
         settled = true;
         window.clearTimeout(ceiling);
         observer?.disconnect?.();
-        resolve();
+        if (native && interpreter.run_from_bytes === observedApply) {
+            interpreter.run_from_bytes = apply;
+        }
+        resolveDone(reason);
     };
-    const observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => finish());
-    // Only structural changes: an attribute tick from a clock or a progress bar
-    // is not the route arriving.
+    const observer = typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver((records) => {
+            if (!native) finish(how(records));
+        });
     observer?.observe?.(document.body ?? document.documentElement, {
         childList: true,
+        characterData: true,
         subtree: true,
     });
-    const ceiling = window.setTimeout(() => finish(), 120);
-    if (!observer) finish();
-});
+    if (native) interpreter.run_from_bytes = observedApply;
+    const startCeiling = () => {
+        ceiling = window.setTimeout(() => finish("ceiling"), native ? NATIVE_ROUTE_CEILING_MS : ROUTE_CEILING_MS);
+    };
+    if (acked) startCeiling();
+    if (!observer) finish("ceiling");
+    return {
+        done,
+        acknowledged() {
+            if (acked) return;
+            acked = true;
+            startCeiling();
+        },
+    };
+};
+
+// Dioxus's native interpreter applies DOM edits on the next animation frame
+// unless it is in `headless` mode, where it applies them as they arrive. Frames
+// do not tick inside a view transition's update callback, so with frame-timed
+// edits the new route cannot reach the DOM while the callback waits for it: the
+// navigation sits out the full ceiling, then captures the old page as the new
+// one. While the callback runs, the interpreter applies edits as they arrive.
+//
+// In Dioxus 0.7.9 only Linux desktop needs this. Everywhere else the window is
+// created hidden and shown once the page loads, and the interpreter reads that
+// first hidden state as headless and keeps it, so it already applies edits as
+// they arrive and is left alone here.
+//
+// This reaches into the interpreter as Dioxus 0.7.9 builds it, so every piece
+// is checked first. The web renderer applies edits directly and has none of it.
+const editsKey = Symbol.for("g3-route-transitions.edits");
+// Desktop and mobile Dioxus: edits arrive over a channel of their own.
+const native = typeof window.interpreter?.rafEdits === "function";
+const dxRouteTransitionApplyEditsNow = () => {
+    const interpreter = window.interpreter;
+    if (
+        typeof interpreter?.headless !== "boolean"
+        || typeof interpreter.rafEdits !== "function"
+        || typeof interpreter.flushQueuedBytes !== "function"
+        || typeof interpreter.markEditsFinished !== "function"
+        || !Array.isArray(interpreter.queuedBytes)
+    ) {
+        return null;
+    }
+    // Already applying edits as they arrive, and not because a running
+    // navigation switched it: nothing to do.
+    if (interpreter.headless && !window[editsKey]) return null;
+    // Overlapping navigations share the switch; the last one out restores it.
+    const state = window[editsKey] ?? { depth: 0, headless: interpreter.headless };
+    window[editsKey] = state;
+    state.depth += 1;
+    interpreter.headless = true;
+
+    // A batch that arrived after the old page was captured is still waiting
+    // for its frame, and the renderer sends nothing more, the route included,
+    // until that batch is acknowledged. Apply and acknowledge it now. Its frame
+    // acknowledges it again later, so that many acknowledgements are dropped,
+    // keeping the renderer's count of applied batches true.
+    const waiting = interpreter.queuedBytes.length;
+    if (waiting > 0) {
+        interpreter.flushQueuedBytes();
+        const acknowledge = interpreter.markEditsFinished;
+        for (let batch = 0; batch < waiting; batch += 1) acknowledge.call(interpreter);
+        let owed = waiting;
+        interpreter.markEditsFinished = function () {
+            owed -= 1;
+            if (owed <= 0) interpreter.markEditsFinished = acknowledge;
+        };
+    }
+    return {
+        waiting,
+        restore() {
+            state.depth -= 1;
+            if (state.depth > 0) return;
+            interpreter.headless = state.headless;
+            if (window[editsKey] === state) delete window[editsKey];
+        },
+    };
+};
+
+// Counts the frames drawn while the animation runs, and the longest gap
+// between two of them, which is what a stutter is. Started only once the
+// animation is running: frames do not tick before then.
+const dxRouteTransitionSampleFrames = () => {
+    let running = true;
+    let last = null;
+    let count = 0;
+    let longest = 0;
+    const tick = (now) => {
+        if (!running) return;
+        if (last != null) longest = Math.max(longest, now - last);
+        last = now;
+        count += 1;
+        window.requestAnimationFrame(tick);
+    };
+    window.requestAnimationFrame(tick);
+    return () => {
+        running = false;
+        return { count, longest };
+    };
+};
+
+// Reports this navigation's timings to the listener the `timing` feature
+// starts, and to the browser's performance timeline.
+const dxRouteTransitionReportTiming = () => {
+    const reporter = window[Symbol.for("g3-route-transitions.timing")];
+    // The latest tap or key press, if recent enough to have started this.
+    const lastInput = reporter?.lastInput?.();
+    const input = lastInput != null && times.script - lastInput >= 0 && times.script - lastInput < 2000
+        ? lastInput
+        : null;
+    const phases = [
+        ["input to script", input, times.script],
+        ["old page captured", times.start, times.capture],
+        ["route acknowledged", times.capture, times.ack],
+        [`route rendered (${details.rendered})`, times.capture, times.rendered],
+        ["new page captured", times.rendered, times.ready],
+        [input != null ? "input to motion" : "script to motion", input ?? times.script, times.ready],
+        ["animation", times.ready, times.finished],
+    ].filter(([, start, end]) => start != null && end != null);
+    for (const [name, start, end] of phases) {
+        try {
+            performance.measure(`route transition: ${name}`, { start, end });
+        } catch (_) {
+        }
+    }
+    const parts = phases.map(([name, start, end]) => `${name} ${Math.round(end - start)}ms`);
+    if (details.frames && times.ready != null && times.finished != null) {
+        const seconds = (times.finished - times.ready) / 1000;
+        const fps = seconds > 0 ? Math.round(details.frames.count / seconds) : 0;
+        parts.push(
+            `${details.frames.count} frames (${fps} fps), longest frame ${Math.round(details.frames.longest)}ms`,
+        );
+    }
+    if (details.edits) parts.push(details.edits);
+    const route = `${from} -> ${to || "back"}`;
+    const phaseList = parts.length > 0 ? `; ${parts.join(", ")}` : "";
+    reporter?.report?.(`${animation} ${route} (${platform}): ${details.outcome}${phaseList}`);
+};
 
 // A navigation that starts while another is running skips the older one, whose
 // cleanup then runs while the newer one is still waiting to capture the old
@@ -677,6 +874,7 @@ window[runKey] = run;
 
 try {
     if (!document.startViewTransition || prefersReducedMotion) {
+        details.outcome = prefersReducedMotion ? "instant: reduced motion" : "instant: no View Transitions";
         dioxus.send("navigate");
         dioxus.send("done");
     } else {
@@ -703,28 +901,46 @@ try {
         void document.documentElement.offsetHeight;
 
         let updateStarted = false;
+        let stopSampling = null;
+        mark("start");
         const transition = document.startViewTransition(async () => {
             updateStarted = true;
-            // Watch first, then ask. The router usually renders while the ack
-            // is still in flight, so an observer started afterwards has already
-            // missed the only mutation it cares about.
-            const rendered = dxRouteTransitionRouteRendered();
-
-            dioxus.send("navigate");
-
-            const routeCommit = await dioxus.recv();
-            if (routeCommit !== "navigated") {
-                throw new Error(`unexpected route transition ack: ${routeCommit}`);
+            mark("capture");
+            // Before anything can render: the route's edits must land while
+            // this callback waits for them.
+            const edits = dxRouteTransitionApplyEditsNow();
+            if (edits) {
+                details.edits = edits.waiting > 0
+                    ? `edits applied on arrival, ${edits.waiting} waiting batch flushed`
+                    : "edits applied on arrival";
             }
+            try {
+                // Watch first, then ask. The router usually renders while the
+                // ack is still in flight, so an observer started afterwards has
+                // already missed the only mutation it cares about.
+                const rendered = dxRouteTransitionRouteRendered(native ? window.interpreter : null);
 
-            await rendered;
-            // A browser Back or Forward returns to a remembered scroll offset.
-            // Restored here, so the new snapshot is taken where the page lands.
-            window[Symbol.for("g3-route-transitions.browser-history")]?.restoreScroll?.();
-            // Dismissal reveals the newly rendered route, not the outgoing
-            // sheet. Capture its resolved theme color before the new snapshot
-            // is taken so dark pages do not inherit a light sheet backdrop.
-            dxRouteTransitionIncomingPaintContext();
+                dioxus.send("navigate");
+
+                const routeCommit = await dioxus.recv();
+                mark("ack");
+                if (routeCommit !== "navigated") {
+                    throw new Error(`unexpected route transition ack: ${routeCommit}`);
+                }
+                rendered.acknowledged();
+
+                details.rendered = await rendered.done;
+                mark("rendered");
+                // A browser Back or Forward returns to a remembered scroll offset.
+                // Restored here, so the new snapshot is taken where the page lands.
+                window[Symbol.for("g3-route-transitions.browser-history")]?.restoreScroll?.();
+                // Dismissal reveals the newly rendered route, not the outgoing
+                // sheet. Capture its resolved theme color before the new snapshot
+                // is taken so dark pages do not inherit a light sheet backdrop.
+                dxRouteTransitionIncomingPaintContext();
+            } finally {
+                edits?.restore();
+            }
         });
 
         // The old page is captured on the next rendering opportunity, and the
@@ -734,25 +950,44 @@ try {
         // so neither happens and the navigation waits forever. Skipping still
         // runs the update callback, so the route changes, just without motion.
         const unpainted = window.setTimeout(() => {
-            if (!updateStarted) transition.skipTransition();
+            if (!updateStarted) {
+                details.outcome = "skipped: the page never painted";
+                transition.skipTransition();
+            }
         }, UNPAINTED_PAGE_MS);
 
         try {
             await transition.ready;
-        } catch (_) {
+            mark("ready");
+            if (timing) stopSampling = dxRouteTransitionSampleFrames();
+        } catch (error) {
+            // A newer navigation skips this one (AbortError), and duplicate
+            // snapshot names abort it (InvalidStateError).
+            if (details.outcome === "animated") {
+                details.outcome = `skipped: ${error?.name ?? error}`;
+            }
         }
 
         try {
             await transition.finished;
+            if (details.outcome === "animated") mark("finished");
         } catch (_) {
         }
+        details.frames = stopSampling?.() ?? null;
         window.clearTimeout(unpainted);
 
         dioxus.send("done");
     }
-} catch (_) {
+} catch (error) {
+    details.outcome = `failed: ${error?.message ?? error}`;
     dioxus.send("fallback");
 } finally {
+    if (timing) {
+        try {
+            dxRouteTransitionReportTiming();
+        } catch (_) {
+        }
+    }
     if (window[runKey] === run) {
         delete window[runKey];
         delete document.documentElement.dataset.routeTransition;
@@ -806,6 +1041,75 @@ fn navigate_script(
             SURFACE_SELECTOR_PLACEHOLDER,
             &js_string_literal(&surface_selector()),
         )
+        .replace(
+            TIMING_PLACEHOLDER,
+            if cfg!(feature = "timing") {
+                "true"
+            } else {
+                "false"
+            },
+        )
+}
+/// The `timing` feature: each navigation's phases, logged through `tracing`.
+#[cfg(feature = "timing")]
+mod timing {
+    use dioxus::{
+        core::{provide_root_context, spawn_forever},
+        document::eval,
+        logger::tracing,
+        prelude::*,
+    };
+    /// Provided at the root once the listener runs, so it starts only once.
+    #[derive(Clone, Copy)]
+    struct Listening;
+    /// Start the listener that logs each navigation's report, unless it is
+    /// already running.
+    ///
+    /// It runs at the root because a navigation's own task usually belongs to
+    /// a button on the page being left, which is gone by the time the
+    /// animation ends and the report is sent.
+    pub(crate) fn listen() {
+        if try_consume_context::<Listening>().is_some() {
+            return;
+        }
+        provide_root_context(Listening);
+        spawn_forever(async {
+            let mut listener = eval(TIMING_LISTENER);
+            while let Ok(report) = listener.recv::<String>().await {
+                tracing::info!(target: "g3_route_transitions", "{report}");
+            }
+        });
+    }
+    /// Remembers the latest input, which is usually what started a
+    /// navigation, and passes each report to Rust.
+    pub(crate) const TIMING_LISTENER: &str = r#"
+const key = Symbol.for("g3-route-transitions.timing");
+window[key]?.dispose?.();
+
+let lastInput = null;
+const onInput = (event) => {
+    lastInput = event.timeStamp;
+};
+const inputs = ["pointerdown", "pointerup", "click", "keydown"];
+for (const type of inputs) {
+    window.addEventListener(type, onInput, { capture: true, passive: true });
+}
+
+let release;
+const released = new Promise((resolve) => {
+    release = resolve;
+});
+window[key] = {
+    lastInput: () => lastInput,
+    report: (line) => dioxus.send(line),
+    dispose() {
+        for (const type of inputs) window.removeEventListener(type, onInput, { capture: true });
+        release();
+    },
+};
+// Native renderers close the channel when the script returns.
+await released;
+"#;
 }
 async fn run_animated_navigation(
     animation: NavigationTransition,
@@ -813,6 +1117,8 @@ async fn run_animated_navigation(
     to: Option<&str>,
     mut navigate: impl FnMut(),
 ) {
+    #[cfg(feature = "timing")]
+    timing::listen();
     let script = navigate_script(animation, platform(), from, to);
     let mut transition = eval(&script);
     let mut navigated = false;
@@ -1367,13 +1673,14 @@ mod tests {
             .find("updateStarted = true;")
             .expect("the update callback marks itself started");
         let navigate = script
-            .find("dioxus.send(\"navigate\");\n\n            const routeCommit")
+            .find("dioxus.send(\"navigate\");\n\n                const routeCommit")
             .expect("the update callback asks for the route");
         assert!(
             started < navigate,
             "mark the start before asking for the route"
         );
-        assert!(script.contains("if (!updateStarted) transition.skipTransition();"));
+        assert!(script.contains("if (!updateStarted) {"));
+        assert!(script.contains("transition.skipTransition();"));
         assert!(script.contains("window.clearTimeout(unpainted);"));
     }
     #[test]
@@ -1410,7 +1717,9 @@ mod tests {
             .find("document.startViewTransition(async () =>")
             .expect("the transition is started");
         let body = &script[callback..];
-        let rendered = body.find("await rendered;").expect("the new route renders");
+        let rendered = body
+            .find("await rendered.done;")
+            .expect("the new route renders");
         let incoming = body
             .find("dxRouteTransitionIncomingPaintContext();")
             .expect("the incoming paint context is captured");
@@ -1468,7 +1777,7 @@ mod tests {
             .expect("the transition is started");
         let body = &VIEW_TRANSITION_NAVIGATE[callback..];
         let armed = body
-            .find("const rendered = dxRouteTransitionRouteRendered();")
+            .find("const rendered = dxRouteTransitionRouteRendered(native ? window.interpreter : null);")
             .expect("the wait is armed");
         let asked = body
             .find("dioxus.send(\"navigate\")")
@@ -1477,11 +1786,163 @@ mod tests {
             armed < asked,
             "the observer must be live before the request"
         );
-        assert!(VIEW_TRANSITION_NAVIGATE.contains("await rendered;"));
+        assert!(VIEW_TRANSITION_NAVIGATE.contains("await rendered.done;"));
         assert!(!VIEW_TRANSITION_NAVIGATE.contains("dxRouteTransitionNextFrame"));
         assert!(VIEW_TRANSITION_NAVIGATE.contains("await transition.ready"));
         assert!(!VIEW_TRANSITION_NAVIGATE.contains("console.info"));
         assert!(!VIEW_TRANSITION_NAVIGATE.contains("g3RouteTransition"));
+    }
+    /// Desktop and mobile Dioxus apply edits on an animation frame, and frames
+    /// do not tick inside the update callback. Without the switch the route
+    /// never reaches the DOM while the callback waits, so every navigation on
+    /// Linux desktop waited out the ceiling and captured the old page as new.
+    /// Elsewhere the interpreter already applies edits as they arrive, and is
+    /// left alone.
+    #[test]
+    fn native_edits_apply_while_the_update_callback_waits() {
+        assert!(
+            VIEW_TRANSITION_NAVIGATE
+                .contains("if (interpreter.headless && !window[editsKey]) return null;")
+        );
+        let script = VIEW_TRANSITION_NAVIGATE;
+        let callback = script
+            .find("document.startViewTransition(async () =>")
+            .expect("the transition is started");
+        let body = &script[callback..];
+        let switched = body
+            .find("const edits = dxRouteTransitionApplyEditsNow();")
+            .expect("the callback switches the interpreter");
+        let asked = body
+            .find("dioxus.send(\"navigate\")")
+            .expect("the route is asked for");
+        assert!(switched < asked, "switch before the route can render");
+        let restore = body
+            .find("edits?.restore();")
+            .expect("the switch is restored");
+        let finally = body.find("} finally {").expect("restored in a finally");
+        assert!(asked < finally && finally < restore);
+        // Every piece of the interpreter is checked before it is touched, and
+        // the original mode comes back only when the last overlapping run ends.
+        for check in [
+            "typeof interpreter?.headless !== \"boolean\"",
+            "typeof interpreter.rafEdits !== \"function\"",
+            "typeof interpreter.flushQueuedBytes !== \"function\"",
+            "typeof interpreter.markEditsFinished !== \"function\"",
+            "!Array.isArray(interpreter.queuedBytes)",
+        ] {
+            assert!(script.contains(check), "missing {check}");
+        }
+        assert!(script.contains("interpreter.headless = true;"));
+        assert!(script.contains("if (state.depth > 0) return;"));
+        assert!(script.contains("interpreter.headless = state.headless;"));
+        // A batch already waiting for its frame is applied and acknowledged,
+        // and its frame's later acknowledgement is dropped.
+        assert!(script.contains("interpreter.flushQueuedBytes();"));
+        assert!(script.contains("if (owed <= 0) interpreter.markEditsFinished = acknowledge;"));
+    }
+    /// A route that keeps its structure, such as one details page to the next,
+    /// changes only text. Watching structure alone made it wait out the
+    /// ceiling every time.
+    #[test]
+    fn text_changes_count_as_the_route_arriving() {
+        let script = VIEW_TRANSITION_NAVIGATE;
+        let options = script
+            .split("observer?.observe?.(")
+            .nth(1)
+            .and_then(|rest| rest.split("});").next())
+            .expect("the observer is started");
+        assert!(options.contains("childList: true"));
+        assert!(options.contains("characterData: true"));
+        assert!(
+            !options.contains("attributes"),
+            "attribute ticks are not the route"
+        );
+        assert!(script.contains("const ROUTE_CEILING_MS = 120;"));
+    }
+    /// Native renderers acknowledge before rendering the route and send edits
+    /// separately, so the first batch applied after the acknowledgement is the
+    /// route. Counting a batch from before it (usually the tap's own), or a
+    /// change made by one of the page's own scripts, captured the old page as
+    /// the new one; the route then landed mid-animation, and Chrome skipped
+    /// the transition ("Prepaint layout check failed").
+    #[test]
+    fn native_navigations_wait_for_a_dioxus_batch_after_the_acknowledgement() {
+        let script = VIEW_TRANSITION_NAVIGATE;
+        assert!(
+            script.contains("const native = typeof window.interpreter?.rafEdits === \"function\";")
+        );
+        let callback = script
+            .find("document.startViewTransition(async () =>")
+            .expect("the transition is started");
+        let body = &script[callback..];
+        let ack = body
+            .find("const routeCommit = await dioxus.recv();")
+            .expect("the acknowledgement is awaited");
+        let acknowledged = body
+            .find("rendered.acknowledged();")
+            .expect("the wait is told about the acknowledgement");
+        let waited = body
+            .find("details.rendered = await rendered.done;")
+            .expect("the wait is awaited");
+        assert!(ack < acknowledged && acknowledged < waited);
+        assert!(script.contains(
+            "const rendered = dxRouteTransitionRouteRendered(native ? window.interpreter : null);"
+        ));
+        // Natively only Dioxus's own batches count, and only after the
+        // acknowledgement; the observer is left to the web.
+        assert!(script.contains("if (!native) finish(how(records));"));
+        assert!(script.contains("if (native) interpreter.run_from_bytes = observedApply;"));
+        assert!(script.contains("if (acked && records.length > 0) finish(how(records));"));
+        // The interpreter gets its own apply back once the wait is over.
+        assert!(script.contains("interpreter.run_from_bytes = apply;"));
+        // The ceiling starts only once the acknowledgement arrives.
+        assert!(script.contains("acked = true;\n            startCeiling();"));
+        assert!(script.contains("if (acked) startCeiling();"));
+        assert!(script.contains("const NATIVE_ROUTE_CEILING_MS = 300;"));
+    }
+    /// Timing is reported only with the feature, through the listener rather
+    /// than the console, and after the navigation has ended.
+    #[test]
+    fn timing_is_reported_only_when_enabled() {
+        let filled = navigate_script(NavigationTransition::Forward, Platform::Ios, "/", None);
+        let expected = if cfg!(feature = "timing") {
+            "const timing = true;"
+        } else {
+            "const timing = false;"
+        };
+        assert!(filled.contains(expected));
+        assert!(!VIEW_TRANSITION_NAVIGATE.contains("console."));
+        let cleanup = VIEW_TRANSITION_NAVIGATE
+            .split("} finally {\n    if (timing) {")
+            .nth(1)
+            .expect("the report is sent from the cleanup");
+        assert!(cleanup.contains("dxRouteTransitionReportTiming();"));
+        // Each phase is marked where it happens.
+        for phase in [
+            "mark(\"start\");\n        const transition = document.startViewTransition",
+            "updateStarted = true;\n            mark(\"capture\");",
+            "await dioxus.recv();\n                mark(\"ack\");",
+            "details.rendered = await rendered.done;\n                mark(\"rendered\");",
+            "await transition.ready;\n            mark(\"ready\");",
+        ] {
+            assert!(VIEW_TRANSITION_NAVIGATE.contains(phase), "missing {phase}");
+        }
+    }
+    /// The listener outlives the page whose button started a navigation, and
+    /// its script must not return, or native renderers close its channel.
+    #[cfg(feature = "timing")]
+    #[test]
+    fn timing_listener_runs_at_the_root_and_stays_open() {
+        let source = include_str!("lib.rs");
+        assert!(source.contains(
+            "spawn_forever(async {\n            let mut listener = eval(TIMING_LISTENER);"
+        ));
+        assert!(
+            timing::TIMING_LISTENER
+                .trim_end()
+                .ends_with("await released;")
+        );
+        assert!(timing::TIMING_LISTENER.contains("window[key]?.dispose?.();"));
     }
     #[test]
     fn transitions_publish_the_routes_they_move_between_and_clear_them() {
@@ -1498,8 +1959,8 @@ mod tests {
         assert!(set_from < started);
         assert!(VIEW_TRANSITION_NAVIGATE.contains("dataset.routeTransitionTo = to"));
         let cleanup = VIEW_TRANSITION_NAVIGATE
-            .split("} finally {")
-            .nth(1)
+            .rsplit("} finally {")
+            .next()
             .expect("the script cleans up");
         assert!(cleanup.contains("delete document.documentElement.dataset.routeTransitionFrom;"));
         assert!(cleanup.contains("delete document.documentElement.dataset.routeTransitionTo;"));
@@ -1518,8 +1979,8 @@ mod tests {
             .expect("the transition is started");
         assert!(claimed < started, "claim before the transition starts");
         let cleanup = script
-            .split("} finally {")
-            .nth(1)
+            .rsplit("} finally {")
+            .next()
             .expect("the script cleans up");
         let owned = cleanup
             .find("if (window[runKey] === run) {")

@@ -557,10 +557,12 @@ mod tests {
         let key = format!("Symbol.for(\"{BROWSER_HISTORY_STATE_KEY}\")");
         assert!(BROWSER_HISTORY_BRIDGE.contains(&key));
         assert!(VIEW_TRANSITION_NAVIGATE.contains(&key));
-        let rendered = VIEW_TRANSITION_NAVIGATE.find("await rendered;").unwrap();
+        let rendered = VIEW_TRANSITION_NAVIGATE
+            .find("await rendered.done;")
+            .unwrap();
         let restored = VIEW_TRANSITION_NAVIGATE.find("restoreScroll?.()").unwrap();
         let captured = VIEW_TRANSITION_NAVIGATE
-            .find("dxRouteTransitionIncomingPaintContext();\n        });")
+            .find("dxRouteTransitionIncomingPaintContext();\n            } finally {")
             .unwrap();
         assert!(rendered < restored && restored < captured);
     }

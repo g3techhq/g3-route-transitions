@@ -30,6 +30,7 @@ lint:
 lint-strict:
     cargo clippy --all-targets --no-deps -- -D warnings
     cargo clippy --all-targets --no-deps --features native-back -- -D warnings
+    cargo clippy --all-targets --no-deps --features timing -- -D warnings
     cargo clippy --manifest-path macros/Cargo.toml --all-targets --no-deps -- -D warnings
     cargo clippy --no-deps --target wasm32-unknown-unknown -- -D warnings
     cargo clippy --no-deps --target aarch64-linux-android --features native-back -- -D warnings
@@ -37,6 +38,7 @@ lint-strict:
 
 test:
     cargo nextest run
+    cargo nextest run --features timing
     cargo nextest run --manifest-path macros/Cargo.toml --no-tests pass
     cargo test --doc
     cargo test --doc --manifest-path macros/Cargo.toml

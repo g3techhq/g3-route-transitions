@@ -6,7 +6,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A `timing` feature that logs, for every animated navigation, how long each
+  phase took (the tap reaching the script, capturing the old page, the round
+  trip to Rust, the new route rendering, the first moving frame), how smoothly
+  the animation drew (frames, frame rate, longest frame), and why a navigation
+  did not animate. Lines go through `tracing`, so `dx serve` shows
+  them from a phone, and the same phases appear in the browser's performance
+  timeline. See "Measuring a transition" in the README.
+
 ### Fixed
+
+- Linux desktop apps no longer freeze for 120ms before every animated
+  navigation and then capture the old page as the new one. Dioxus applies DOM
+  edits there on the next animation frame, and frames do not run while a View
+  Transition waits for the new page, so the route could not arrive in time.
+  While it waits, the transition now has Dioxus apply edits as they arrive.
+  Windows, macOS, Android and iOS already applied them as they arrived.
+- On desktop and mobile, a navigation no longer captures the old page as the
+  new one when the tap itself re-rendered something (a pressed button, a
+  player picking up the tapped video) or one of the page's scripts changed the
+  DOM. The new page then landed under the running animation, and Chrome
+  dropped the transition a few frames in ("Prepaint layout check failed"),
+  which looked like a sheet that never rose. The transition now waits for the
+  first batch of Dioxus edits applied after Rust confirms the route change, for
+  up to 300ms instead of 120ms.
+- Moving between two routes with the same layout, such as one details page to
+  the next, no longer waits 120ms before animating. A change of text now counts
+  as the new route arriving, not only added or removed elements.
 
 - A base region inside a page region (a tab's body under its header) takes the
   height left under the header instead of the full viewport. The end of a long
