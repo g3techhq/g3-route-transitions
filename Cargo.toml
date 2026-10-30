@@ -17,9 +17,9 @@ name = "g3_route_transitions"
 path = "src/lib.rs"
 
 [dependencies]
-dioxus = { version = "0.7.9", features = ["router"] }
+dioxus = { version = "=0.8.0-alpha.3", features = ["router"] }
 g3-route-transitions-macros = { version = "0.5.0", path = "macros" }
-manganis = "0.7.9"
+manganis = "=0.8.0-alpha.3"
 g3-native-plugins = { version = "0.4.0", default-features = false, optional = true }
 
 [features]
@@ -34,3 +34,13 @@ web-sys = { version = "0.3.102", features = ["Navigator", "Performance", "Window
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 trybuild = "1"
+
+[patch.crates-io]
+# Dioxus fork (upstream main + g3 commits; see G3-PATCHES.md there). Local
+# builds use the sibling checkouts via Projects/.cargo/config.toml.
+dioxus = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
+# g3-native-plugins (behind `native-back`) depends on dioxus-signals directly.
+dioxus-signals = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
+manganis = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
+# g3 crates are not published until Dioxus 0.8.0:
+g3-native-plugins = { git = "https://github.com/g3techhq/g3-native-plugins", branch = "main" }
