@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- Requires Dioxus `=0.8.0-alpha.3` from the Gateway3B fork of Dioxus `main`
+  (and `manganis` with it), instead of Dioxus 0.7.9. Nothing is published to
+  crates.io until Dioxus 0.8.0 is; depend on this crate's `main` through
+  `[patch.crates-io]`, as the README's Install section shows. The public API is
+  unchanged. Two Dioxus changes reach apps: routes with query segments no
+  longer end in a bare `?` (or a stray `&`) when query values are empty, which
+  changes the paths
+  published as `data-route-transition-from` and `data-route-transition-to`;
+  and with no placeholder comments in the DOM, a navigation between two pages
+  that render nothing waits out the 120ms (300ms native) ceiling before it
+  animates.
+
 ### Added
 
 - A `timing` feature that logs, for every animated navigation, how long each

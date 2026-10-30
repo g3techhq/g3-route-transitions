@@ -43,9 +43,20 @@ instantly.
 
 ```toml
 [dependencies]
-dioxus = { version = "0.7.9", features = ["router"] }
+dioxus = { version = "=0.8.0-alpha.3", features = ["router"] }
 g3-route-transitions = "0.5"
+
+[patch.crates-io]
+dioxus = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
+manganis = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
+g3-route-transitions = { git = "https://github.com/g3techhq/g3-route-transitions", branch = "main" }
 ```
+
+`main` builds on a fork of Dioxus `main` (`0.8.0-alpha.3`) and is not
+published until Dioxus 0.8.0 is, so it comes in through `[patch.crates-io]`.
+`native-back` also needs `g3-native-plugins` and `dioxus-signals` patched the
+same way. For Dioxus 0.7.9, use `g3-route-transitions = "0.5"` from crates.io
+without the patches.
 
 Enable `native-back` to animate the native Back action on Android and iOS:
 

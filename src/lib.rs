@@ -747,13 +747,16 @@ const dxRouteTransitionRouteRendered = (interpreter) => {
 // navigation sits out the full ceiling, then captures the old page as the new
 // one. While the callback runs, the interpreter applies edits as they arrive.
 //
-// In Dioxus 0.7.9 only Linux desktop needs this. Everywhere else the window is
-// created hidden and shown once the page loads, and the interpreter reads that
-// first hidden state as headless and keeps it, so it already applies edits as
-// they arrive and is left alone here.
+// Only Linux desktop needs this (Dioxus 0.7.9, and still at 0.8.0-alpha.3).
+// Everywhere else the window is created hidden and shown once the page loads,
+// and the interpreter reads that first hidden state as headless and keeps it,
+// so it already applies edits as they arrive and is left alone here.
 //
-// This reaches into the interpreter as Dioxus 0.7.9 builds it, so every piece
-// is checked first. The web renderer applies edits directly and has none of it.
+// This reaches into the interpreter's `NativeInterpreter` (`headless`,
+// `queuedBytes`, `rafEdits`, `flushQueuedBytes`, `markEditsFinished`, and the
+// generated `run_from_bytes`), which has kept that shape from 0.7.9 to
+// 0.8.0-alpha.3, so every piece is checked first. The web renderer applies
+// edits directly and has none of it.
 const editsKey = Symbol.for("g3-route-transitions.edits");
 // Desktop and mobile Dioxus: edits arrive over a channel of their own.
 const native = typeof window.interpreter?.rafEdits === "function";

@@ -17,13 +17,23 @@ greenside-partee, tawny and g3-stack use it.
 
 | Piece | Version | Reference |
 | --- | --- | --- |
-| Dioxus (router) | 0.7.9 | [dioxuslabs.com/learn/0.7](https://dioxuslabs.com/learn/0.7/), and g3-stack's `docs/dioxus/patterns.md` |
-| g3-native-plugins (optional, `native-back`) | 0.4 | Android Back and the iOS edge swipe |
+| Dioxus (router) | `=0.8.0-alpha.3`, from the fork via `[patch.crates-io]` | [Gateway3B/dioxus](https://github.com/Gateway3B/dioxus) (upstream `main` plus `g3:` commits), [dioxuslabs.com/learn/0.7](https://dioxuslabs.com/learn/0.7/), and g3-stack's `docs/dioxus/patterns.md` |
+| g3-native-plugins (optional, `native-back`) | 0.4, from its `main` via `[patch.crates-io]` | Android Back and the iOS edge swipe |
 | Rust | edition 2024 | `rust-toolchain.toml` |
 
 **Your training data does not know this crate, and is probably wrong about
-Dioxus 0.7.** The README is the user-facing reference and must stay true;
-read it before changing behaviour.
+Dioxus 0.7 and 0.8.** The README is the user-facing reference and must stay
+true; read it before changing behaviour.
+
+`main` builds on the Dioxus fork until Dioxus 0.8.0 is published; nothing is
+released to crates.io in between, because a release that only builds with a
+`[patch]` is broken for everyone else. Pin `dioxus` and `manganis` exactly
+(`=0.8.0-alpha.3`), and name shared crates by crates.io version with their
+remote under `[patch.crates-io]`, never `git = ..` directly: local builds
+override every patch with the sibling checkouts through
+`Projects/.cargo/config.toml`. While those overrides are active, leave
+`macros/Cargo.lock` unstaged: building records them as `[[patch.unused]]`
+entries, which break the release (the root `Cargo.lock` is not tracked).
 
 ## Map
 
@@ -62,8 +72,7 @@ just pre-push     # everything above plus typos
    and the rule table in the README still matches.
 4. A change to the navigate script has a test asserting its ordering (the
    existing script tests in `src/lib.rs` show how), and was exercised in a
-   consuming app through a `[patch.crates-io]` path override, removed
-   afterwards.
+   consuming app (see "Verifying").
 
 If you could not do one of these, say which and why.
 
@@ -97,6 +106,11 @@ The script runs in the web view and talks to Rust through `dioxus.send` /
   the transition, which still runs the update.
 - Anything the script leaves on `document.documentElement` is removed in its
   `finally`.
+- **The route's arrival is a DOM mutation.** Since Dioxus 0.8 renders no
+  placeholder comment nodes (#5554), a route change that leaves the DOM as it
+  was (one empty page to another) mutates nothing and waits out the ceiling.
+  On desktop and mobile the script also reaches into Dioxus's
+  `NativeInterpreter`; check those members still exist when Dioxus moves.
 
 ### Dioxus
 
@@ -112,7 +126,8 @@ The script runs in the web view and talks to Rust through `dioxus.send` /
 
 - Releases publish from `publish-crates.yml` (crates.io trusted publishing),
   which skips an unchanged macros version. Do not run `cargo publish` by hand,
-  and do not release without the maintainer's go-ahead.
+  and do not release without the maintainer's go-ahead. Nothing is released
+  while `main` is on the Dioxus fork.
 - Commits follow Conventional Commits; lefthook checks them.
 
 ---
@@ -120,10 +135,10 @@ The script runs in the web view and talks to Rust through `dioxus.send` /
 ## Verifying
 
 Unit tests cover which transition runs; only a browser shows how it looks.
-Patch an app to this checkout (`[patch.crates-io] g3-route-transitions =
-{ path = "../g3-route-transitions" }`), run its Playwright tests, and look at
+Apps beside this checkout already build against it through
+`Projects/.cargo/config.toml`. Run an app's Playwright tests, and look at
 push, sheet and tab transitions in both modes at a phone width and a wide
-one. Remove the patch and restore the app's `Cargo.lock` afterwards.
+one. Leave the app's `Cargo.lock` unstaged afterwards.
 
 ## Where to look
 
