@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Error, Fields, Ident, ItemEnum, Result, Token, parenthesized, parse_macro_input};
+
 /// Derives route-owned View Transition behavior for a Dioxus `Routable` enum.
 ///
 /// Add `RouteTransitions` to the same derive list as `Routable`, then add
@@ -278,6 +279,7 @@ pub fn derive_route_transitions(item: TokenStream) -> TokenStream {
     }
     .into()
 }
+
 fn parse_transition_attr(variant: &syn::Variant) -> Result<Option<TransitionArgs>> {
     let mut transition = None;
     for attr in &variant.attrs {
@@ -290,6 +292,7 @@ fn parse_transition_attr(variant: &syn::Variant) -> Result<Option<TransitionArgs
     }
     Ok(transition)
 }
+
 fn build_layer_arms(
     enum_ident: &Ident,
     route_variants: &[RouteVariant],
@@ -326,6 +329,7 @@ fn build_layer_arms(
         })
         .collect()
 }
+
 fn build_forward_arms(
     enum_ident: &Ident,
     route_variants: &[RouteVariant],
@@ -358,6 +362,7 @@ fn build_forward_arms(
     }
     Ok(arms)
 }
+
 fn build_replace_arms(
     enum_ident: &Ident,
     route_variants: &[RouteVariant],
@@ -395,6 +400,7 @@ fn build_replace_arms(
     }
     Ok(arms)
 }
+
 fn build_hand_off_arms(
     enum_ident: &Ident,
     route_variants: &[RouteVariant],
@@ -427,6 +433,7 @@ fn build_hand_off_arms(
     }
     Ok(arms)
 }
+
 fn build_peer_ordering_arms(
     enum_ident: &Ident,
     route_variants: &[RouteVariant],
@@ -469,6 +476,7 @@ fn build_peer_ordering_arms(
     }
     Ok(arms)
 }
+
 fn validate_peer_fields(variant: &RouteVariant, peers: &PeerArgs) -> Result<()> {
     if let Some(field) = peers.key.iter().find(|field| **field == peers.order) {
         return Err(Error::new_spanned(
@@ -478,6 +486,7 @@ fn validate_peer_fields(variant: &RouteVariant, peers: &PeerArgs) -> Result<()> 
     }
     validate_named_fields(variant, peers.used_fields(), "peers")
 }
+
 fn validate_named_fields(
     variant: &RouteVariant,
     used_fields: Vec<&Ident>,
@@ -507,6 +516,7 @@ fn validate_named_fields(
     }
     Ok(())
 }
+
 fn key_aliases(prefix: &str, fields: &[Ident]) -> Vec<(Ident, Ident)> {
     fields
         .iter()
@@ -517,6 +527,7 @@ fn key_aliases(prefix: &str, fields: &[Ident]) -> Vec<(Ident, Ident)> {
         })
         .collect()
 }
+
 fn build_key_pattern(
     enum_ident: &Ident,
     variant_ident: &Ident,
@@ -543,6 +554,7 @@ fn build_key_pattern(
         )),
     }
 }
+
 fn build_layer_pattern(
     enum_ident: &Ident,
     variant_ident: &Ident,
@@ -561,6 +573,7 @@ fn build_layer_pattern(
         }),
     }
 }
+
 fn build_peer_pattern(
     enum_ident: &Ident,
     variant_ident: &Ident,
@@ -584,6 +597,7 @@ fn build_peer_pattern(
         )),
     }
 }
+
 fn build_key_guard(from_aliases: &FieldAliases, to_aliases: &FieldAliases) -> TokenStream2 {
     let comparisons = from_aliases
         .key_aliases()
@@ -605,12 +619,14 @@ fn build_key_guard(from_aliases: &FieldAliases, to_aliases: &FieldAliases) -> To
         }
     }
 }
+
 #[derive(Clone)]
 struct RouteVariant {
     ident: Ident,
     fields: Fields,
     transition: TransitionArgs,
 }
+
 #[derive(Clone)]
 struct TransitionArgs {
     layer: RouteLayer,
@@ -619,6 +635,7 @@ struct TransitionArgs {
     history_replace: Option<ReplaceHistoryArgs>,
     handoff_from: Vec<Ident>,
 }
+
 impl Default for TransitionArgs {
     fn default() -> Self {
         Self {
@@ -630,6 +647,7 @@ impl Default for TransitionArgs {
         }
     }
 }
+
 impl Parse for TransitionArgs {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut args = Self::default();
@@ -644,7 +662,7 @@ impl Parse for TransitionArgs {
             }
             match ident.to_string().as_str() {
                 "layer" => {
-                    input.parse::<Token![=]>()?;
+                    input.parse::<Token![ = ]>()?;
                     let layer: Ident = input.parse()?;
                     args.layer = match layer.to_string().as_str() {
                         "plain" => RouteLayer::Plain,
@@ -671,11 +689,11 @@ impl Parse for TransitionArgs {
                     args.peers = Some(content.parse()?);
                 }
                 "forward_to" => {
-                    input.parse::<Token![=]>()?;
+                    input.parse::<Token![ = ]>()?;
                     args.forward_to = parse_ident_list(input)?;
                 }
                 "history" => {
-                    input.parse::<Token![=]>()?;
+                    input.parse::<Token![ = ]>()?;
                     let action: Ident = input.parse()?;
                     if action != "replace" {
                         return Err(Error::new_spanned(
@@ -692,7 +710,7 @@ impl Parse for TransitionArgs {
                     };
                 }
                 "handoff_from" => {
-                    input.parse::<Token![=]>()?;
+                    input.parse::<Token![ = ]>()?;
                     args.handoff_from = parse_ident_list(input)?;
                 }
                 _ => {
@@ -709,6 +727,7 @@ impl Parse for TransitionArgs {
         Ok(args)
     }
 }
+
 #[derive(Clone, Copy)]
 enum RouteLayer {
     Plain,
@@ -716,10 +735,12 @@ enum RouteLayer {
     StackRoot,
     StackPage,
 }
+
 #[derive(Clone, Default)]
 struct ReplaceHistoryArgs {
     key: Vec<Ident>,
 }
+
 impl Parse for ReplaceHistoryArgs {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let name: Ident = input.parse()?;
@@ -729,7 +750,7 @@ impl Parse for ReplaceHistoryArgs {
                 "unknown history replacement argument",
             ));
         }
-        input.parse::<Token![=]>()?;
+        input.parse::<Token![ = ]>()?;
         let key = parse_key(input)?;
         if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
@@ -740,18 +761,21 @@ impl Parse for ReplaceHistoryArgs {
         Ok(Self { key })
     }
 }
+
 #[derive(Clone)]
 struct PeerArgs {
     group: Ident,
     key: Vec<Ident>,
     order: Ident,
 }
+
 impl PeerArgs {
     /// The key fields, then the order field, which is never also a key.
     fn used_fields(&self) -> Vec<&Ident> {
         self.key.iter().chain([&self.order]).collect()
     }
 }
+
 impl Parse for PeerArgs {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut group = None;
@@ -760,7 +784,7 @@ impl Parse for PeerArgs {
         let mut seen = BTreeSet::new();
         while !input.is_empty() {
             let name: Ident = input.parse()?;
-            input.parse::<Token![=]>()?;
+            input.parse::<Token![ = ]>()?;
             if !seen.insert(name.to_string()) {
                 return Err(Error::new_spanned(
                     &name,
@@ -789,6 +813,7 @@ impl Parse for PeerArgs {
         })
     }
 }
+
 fn parse_key(input: ParseStream<'_>) -> Result<Vec<Ident>> {
     if input.peek(syn::token::Paren) {
         let content;
@@ -800,6 +825,7 @@ fn parse_key(input: ParseStream<'_>) -> Result<Vec<Ident>> {
         Ok(vec![input.parse()?])
     }
 }
+
 fn parse_ident_list(input: ParseStream<'_>) -> Result<Vec<Ident>> {
     if input.peek(syn::token::Paren) {
         let content;
@@ -811,10 +837,12 @@ fn parse_ident_list(input: ParseStream<'_>) -> Result<Vec<Ident>> {
         Ok(vec![input.parse()?])
     }
 }
+
 struct FieldAliases {
     aliases: Vec<(Ident, Ident)>,
     key_len: usize,
 }
+
 impl FieldAliases {
     fn new(prefix: &str, peers: &PeerArgs) -> Self {
         let aliases = peers
@@ -830,6 +858,7 @@ impl FieldAliases {
             key_len: peers.key.len(),
         }
     }
+
     fn bindings(&self) -> Vec<TokenStream2> {
         self.aliases
             .iter()
@@ -840,6 +869,7 @@ impl FieldAliases {
             })
             .collect()
     }
+
     fn key_aliases(&self) -> Vec<&Ident> {
         self.aliases
             .iter()
@@ -847,6 +877,7 @@ impl FieldAliases {
             .map(|(_, alias)| alias)
             .collect()
     }
+
     fn order_alias(&self) -> &Ident {
         &self
             .aliases

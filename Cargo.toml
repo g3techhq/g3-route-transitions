@@ -44,3 +44,7 @@ dioxus-signals = { git = "https://github.com/Gateway3B/dioxus", branch = "main" 
 manganis = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
 # g3 crates are not published until Dioxus 0.8.0:
 g3-native-plugins = { git = "https://github.com/g3techhq/g3-native-plugins", branch = "main" }
+
+[lints.clippy]
+cloned_instead_of_copied = "warn"
+allow_attributes_without_reason = "warn"

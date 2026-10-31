@@ -13,7 +13,13 @@ use dioxus::prelude::*;
 
 /// Which way a history traversal moved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )
+)]
 pub(crate) enum Traversal {
     Back,
     Forward,
@@ -22,7 +28,13 @@ pub(crate) enum Traversal {
 }
 
 impl Traversal {
-    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        allow(
+            dead_code,
+            reason = "Shared definitions are used by selected platform, server or test builds."
+        )
+    )]
     fn parse(value: &str) -> Self {
         match value {
             "back" => Traversal::Back,
@@ -39,13 +51,25 @@ impl Traversal {
 /// cannot see entries from before a reload; a traversal it cannot place resets
 /// it to the destination.
 #[derive(Debug)]
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )
+)]
 pub(crate) struct Entries {
     routes: Vec<String>,
     cursor: usize,
 }
 
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )
+)]
 impl Entries {
     pub(crate) fn new(route: String) -> Self {
         Self {
@@ -96,7 +120,13 @@ impl Entries {
 /// Back uses the same rule as [`try_animated_back`](crate::try_animated_back),
 /// so the browser button and an in-app Back button look alike. Forward replays
 /// the push that created the entry.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )
+)]
 pub(crate) fn traversal_transition<Route: RouteTransitions>(
     from: &Route,
     to: &Route,
@@ -114,12 +144,24 @@ pub(crate) fn traversal_transition<Route: RouteTransitions>(
 
 /// How long after our own `go_back`/`go_forward` a `popstate` is taken to be
 /// theirs. The caller is already animating those.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )
+)]
 const PROGRAMMATIC_WINDOW_MS: f64 = 1000.0;
 
 /// Whether a `popstate` at `now` was caused by our own traversal marked at
 /// `marked_at`, both in milliseconds. Without a clock, a mark counts.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )
+)]
 fn is_programmatic(marked_at: Option<f64>, now: Option<f64>) -> bool {
     match (marked_at, now) {
         (Some(at), Some(now)) => now - at <= PROGRAMMATIC_WINDOW_MS,
@@ -139,7 +181,13 @@ pub(crate) const BROWSER_HISTORY_STATE_KEY: &str = "g3-route-transitions.browser
 /// The direction comes from the Navigation API where available: the entry
 /// index is tracked across pushes and compared on each `popstate`, which does
 /// not depend on whether `currententrychange` fires before or after it.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )
+)]
 pub(crate) const BROWSER_HISTORY_BRIDGE: &str = r#"
 const stateKey = Symbol.for("g3-route-transitions.browser-history");
 window[stateKey]?.dispose?.();

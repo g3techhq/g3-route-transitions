@@ -145,3 +145,8 @@ one. Leave the app's `Cargo.lock` unstaged afterwards.
 - `README.md`: options, the rule table, snapshot regions, Back on every platform
 - `CHANGELOG.md`: what changed between versions
 - g3-ui's `transitions` feature, for where the regions are placed in a real shell
+
+## Readability
+
+Follow [docs/code-style.md](docs/code-style.md) for Rust imports, section spacing
+and RSX layout. Run `python scripts/rust_style.py --staged` before committing.

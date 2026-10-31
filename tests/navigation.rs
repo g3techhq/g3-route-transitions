@@ -5,7 +5,10 @@
 //! route still changes, and history is pushed, replaced or popped by the rules.
 // Clippy asks for `const` thread-local initializers that already are, when
 // linting for Android.
-#![allow(clippy::missing_const_for_thread_local)]
+#![allow(
+    clippy::missing_const_for_thread_local,
+    reason = "The navigation harness mirrors the initialization used by the router."
+)]
 use dioxus::{
     core::NoOpMutations,
     history::{History, MemoryHistory},
@@ -53,7 +56,9 @@ fn Compose() -> Element {
 
 thread_local! {
     static STEPS: RefCell<Vec<(String, bool)>> = const { RefCell::new(Vec::new()) };
+
     static BACK_RESULTS: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
+
     static DONE: Cell<bool> = const { Cell::new(false) };
 }
 
@@ -100,6 +105,7 @@ fn Harness() -> Element {
             DONE.with(|done| done.set(true));
         })
     });
+
     rsx! { Outlet::<Route> {} }
 }
 
@@ -108,6 +114,7 @@ fn App() -> Element {
     use_context_provider(|| {
         Rc::new(MemoryHistory::with_initial_path("/home/0")) as Rc<dyn History>
     });
+
     rsx! { Router::<Route> {} }
 }
 

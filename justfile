@@ -62,3 +62,13 @@ ci: quality security package-check
 package:
     cargo package --manifest-path macros/Cargo.toml
     cargo package
+
+# Readability rules inside RSX, checked without rewriting source.
+style-check:
+    python scripts/rust_style.py
+
+style-report:
+    python scripts/rust_style.py --report
+
+style-test:
+    python scripts/test_rust_style.py

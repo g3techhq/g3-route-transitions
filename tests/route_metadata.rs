@@ -1,4 +1,5 @@
 use g3_route_transitions::{NavigationTransition, RouteTransitions};
+
 #[derive(Clone, PartialEq, RouteTransitions)]
 enum Route {
     #[transition(layer = stack_root, history = replace)]
@@ -26,6 +27,7 @@ enum Route {
     #[transition(layer = sheet, handoff_from = Inbox)]
     Message { id: u8 },
 }
+
 /// A sheet that hands off to another sheet leaves no entry behind: Back from the
 /// second returns to the page under both. The hand-off still rises like any
 /// sheet, instead of taking the cross-fade between unrelated sheets.
@@ -63,6 +65,7 @@ fn a_sheet_handing_off_to_another_sheet_replaces_it_and_still_rises() {
     );
     assert!(!home.replaces_history(&message));
 }
+
 #[test]
 fn roots_push_full_screen_pages_and_fade_between_peers() {
     let home = Route::Home { filter: 0 };
@@ -74,6 +77,7 @@ fn roots_push_full_screen_pages_and_fade_between_peers() {
         NavigationTransition::CrossFade
     );
 }
+
 #[test]
 fn directed_drill_down_routes_push_and_reverse() {
     let detail = Route::Detail { id: 7 };
@@ -87,6 +91,7 @@ fn directed_drill_down_routes_push_and_reverse() {
         NavigationTransition::Backward
     );
 }
+
 #[test]
 fn in_place_variants_replace_history_with_optional_identity_keys() {
     let home = Route::Home { filter: 0 };
@@ -126,6 +131,7 @@ fn segmented_peers_slide_while_still_replacing_history() {
     );
     assert!(!first.replaces_history(&other_record));
 }
+
 #[test]
 fn browser_back_uses_current_route_layer_semantics() {
     let pushed = Route::Person { id: 7 };
@@ -284,9 +290,16 @@ mod documented_rules {
 mod generic_routes {
     use g3_route_transitions::{NavigationTransition as T, RouteTransitions};
 
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )]
     fn layer() {}
-    #[allow(dead_code)]
+
+    #[allow(
+        dead_code,
+        reason = "Shared definitions are used by selected platform, server or test builds."
+    )]
     struct Ordering;
 
     #[derive(PartialEq, RouteTransitions)]
