@@ -149,4 +149,4 @@ one. Leave the app's `Cargo.lock` unstaged afterwards.
 ## Readability
 
 Follow [docs/code-style.md](docs/code-style.md) for Rust imports, section spacing
-and RSX layout. Run `python scripts/rust_style.py --staged` before committing.
+and RSX layout. Run `node scripts/rust-style.mjs --staged` before committing.
