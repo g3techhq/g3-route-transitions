@@ -32,6 +32,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The `timing` listener reaches the page on Android and iOS. It resolved the
+  document from a root task, where native renderers provide none.
+
 - Linux desktop apps no longer freeze for 120ms before every animated
   navigation and then capture the old page as the new one. Dioxus applies DOM
   edits there on the next animation frame, and frames do not run while a View

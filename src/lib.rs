@@ -1109,7 +1109,7 @@ fn navigate_script(
 mod timing {
     use dioxus::{
         core::{provide_root_context, spawn_forever},
-        document::eval,
+        document,
         logger::tracing,
         prelude::*,
     };
@@ -1129,8 +1129,12 @@ mod timing {
             return;
         }
         provide_root_context(Listening);
-        spawn_forever(async {
-            let mut listener = eval(TIMING_LISTENER);
+        // Resolved here, in the caller's scope: native renderers provide the
+        // document below the root, where the task runs, so `eval` there would
+        // find none and quietly run nothing.
+        let document = document::document();
+        spawn_forever(async move {
+            let mut listener = document.eval(TIMING_LISTENER.to_string());
             while let Ok(report) = listener.recv::<String>().await {
                 tracing::info!(target: "g3_route_transitions", "{report}");
             }
@@ -2032,7 +2036,7 @@ mod tests {
     fn timing_listener_runs_at_the_root_and_stays_open() {
         let source = include_str!("lib.rs");
         assert!(source.contains(
-            "spawn_forever(async {\n            let mut listener = eval(TIMING_LISTENER);"
+            "let document = document::document();\n        spawn_forever(async move {\n            let mut listener = document.eval(TIMING_LISTENER.to_string());"
         ));
         assert!(
             timing::TIMING_LISTENER
