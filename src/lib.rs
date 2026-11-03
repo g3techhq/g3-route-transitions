@@ -148,8 +148,10 @@
 //! Animations are skipped, and the route is changed directly, when the
 //! browser lacks `document.startViewTransition` or the user prefers reduced
 //! motion.
+mod back_layer;
 mod browser_history;
 
+pub use back_layer::use_native_back_layer;
 pub use browser_history::use_browser_history_transitions;
 use dioxus::{document::eval, prelude::*};
 pub use g3_route_transitions_macros::RouteTransitions;
@@ -1449,9 +1451,10 @@ await released;
 ///
 /// Call this hook once from a layout rendered beneath `Router<Route>`. It
 /// subscribes to the current route, enables native interception only while the
-/// router can go back, and uses the route's generated reverse animation. At a
-/// root route interception is off, so Android Back exits normally and an iOS
-/// edge swipe does nothing, as it would in any other app. On other targets the
+/// router can go back or a [`use_native_back_layer`] is open, and uses the
+/// route's generated reverse animation. At a root route with nothing open
+/// interception is off, so Android Back exits normally and an iOS edge swipe
+/// does nothing, as it would in any other app. On other targets the
 /// hook does nothing; see [`use_browser_history_transitions`] for the web.
 ///
 /// Enable the crate's `native-back` feature to use this hook. It reuses the
@@ -1517,6 +1520,9 @@ where
     {
         use g3_native_plugins::{BackButton, NativePlugins};
         use std::{cell::Cell, rc::Rc};
+        // In-page layers (g3-ui sheets) hold Back too, so one open at a root
+        // route closes on Back instead of the app exiting.
+        let layer_open = layer_open || back_layer::back_layer_open();
         // Subscribes this component to the route, so it re-renders, and the
         // interception below is re-applied, whenever history changes.
         let _current_route: Route = use_route();

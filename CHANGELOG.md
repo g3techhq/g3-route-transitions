@@ -22,6 +22,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `use_native_back_layer(open)`: keep native Back intercepted while in-page
+  UI, such as a g3-ui sheet, is open, even at a root route, so the press
+  reaches it instead of leaving the app.
+
 - A `timing` feature that logs, for every animated navigation, how long each
   phase took (the tap reaching the script, capturing the old page, the round
   trip to Rust, the new route rendering, the first moving frame), how smoothly
