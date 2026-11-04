@@ -40,6 +40,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `_with_layer`) now removes the native-back listener from the page and turns
   native interception off. The listener used to outlive the hook and claim
   every later press without navigating, and Android Back stayed taken.
+- A native Back pressed while a pop is running is no longer dropped silently:
+  one such press is queued and runs after that pop, so a quick double Back
+  goes back twice. Further presses during the pop are still dropped.
 - The derive rejects a `peers` group whose variants list different numbers of
   `key` fields, instead of treating a variant with fewer keys as a peer of
   every key of the others.

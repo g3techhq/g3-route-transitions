@@ -558,6 +558,11 @@ After an animated pop, the library dispatches `g3routebacktransitionend`
 (`NATIVE_BACK_TRANSITION_FINISHED_EVENT`) for work such as restoring scroll
 position.
 
+Pops run one at a time. A Back pressed while one is running is remembered,
+once, and runs when that pop has landed, so a quick double Back goes back two
+pages; further presses before then are dropped. If the first pop found
+nothing to go back to, the remembered press is dropped too.
+
 When the hook unmounts, it removes its listener from the page and stops
 intercepting Back, so the platform handles it again. With more than one hook
 mounted, the last to unmount does this.

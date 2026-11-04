@@ -1403,27 +1403,45 @@ const stateKey = Symbol.for("g3-route-transitions.native-back");
 
 window[stateKey]?.dispose?.();
 
-const state = { pending: false };
+const state = { pending: false, queued: false };
 const defer = window.queueMicrotask?.bind(window)
     ?? ((callback) => Promise.resolve().then(callback));
-const onNativeBack = (event) => {
-    // Give dialogs, sheets, menus, and fullscreen players the rest of the
-    // current dispatch to claim this cancelable event first.
-    defer(async () => {
-        if (event.defaultPrevented || state.pending) return;
-
-        state.pending = true;
-        event.preventDefault();
-        dioxus.send("back");
-
-        try {
+// One pop at a time. A press during a pop is remembered, once, and runs when
+// that pop has landed, so a quick double Back goes back twice; any further
+// presses before then are dropped. A queued press is dropped as well if the
+// pop before it found nothing to go back to.
+const goBack = async () => {
+    state.pending = true;
+    try {
+        let again = true;
+        while (again) {
+            dioxus.send("back");
             const outcome = await dioxus.recv();
             if (outcome === "navigated") {
                 window.dispatchEvent(new Event(transitionFinishedEvent));
             }
-        } finally {
-            state.pending = false;
+            again = state.queued && outcome === "navigated";
+            state.queued = false;
         }
+    } finally {
+        state.pending = false;
+        state.queued = false;
+    }
+};
+const onNativeBack = (event) => {
+    // Give dialogs, sheets, menus, and fullscreen players the rest of the
+    // current dispatch to claim this cancelable event first.
+    defer(() => {
+        if (event.defaultPrevented) return;
+        if (state.pending) {
+            if (!state.queued) {
+                state.queued = true;
+                event.preventDefault();
+            }
+            return;
+        }
+        event.preventDefault();
+        goBack();
     });
 };
 
@@ -2175,6 +2193,31 @@ mod tests {
             .expect("the bridge can be disposed");
         assert!(dispose.contains("release();"));
         assert!(bridge.contains("state.pending = false"));
+    }
+
+    /// A press while a pop runs is queued once and replayed after it, and
+    /// only when that pop navigated.
+    #[cfg(feature = "native-back")]
+    #[test]
+    fn native_back_bridge_queues_one_press_during_a_pop() {
+        let bridge = NATIVE_BACK_NAVIGATION_BRIDGE;
+        let handler = bridge
+            .split("const onNativeBack")
+            .nth(1)
+            .expect("the bridge has a press handler");
+        let queued = handler
+            .find("state.queued = true")
+            .expect("a press during a pop is queued");
+        let guarded = handler
+            .find("if (!state.queued)")
+            .expect("only one press is queued");
+        assert!(guarded < queued);
+        assert!(bridge.contains("again = state.queued && outcome === \"navigated\";"));
+        let finally = bridge
+            .split("} finally {")
+            .nth(1)
+            .expect("the pop loop cleans up");
+        assert!(finally.contains("state.queued = false"));
     }
 
     /// Unmounting the last hook disposes the bridge and stops intercepting.
