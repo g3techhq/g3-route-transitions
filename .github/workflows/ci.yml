@@ -20,3 +20,24 @@ jobs:
   quality:
     name: Quality gate
     uses: g3techhq/.github/.github/workflows/rust-quality.yml@da47dc747376edcf6ecc0cc986aec51f5084bf42 # v1.0.0
+
+  ios:
+    # The native-back hook is compiled only for Android and iOS, and the
+    # quality gate never builds iOS. A lint, not a bundle: no Xcode 26 guard
+    # is needed (that is for App Store uploads).
+    name: iOS target
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-apple-ios
+          components: clippy
+      - name: Lint the iOS target
+        # Same as `just lint-strict-ios`.
+        run: cargo clippy --no-deps --target aarch64-apple-ios --features native-back -- -D warnings
