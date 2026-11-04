@@ -35,6 +35,10 @@ web-sys = { version = "0.3.102", features = ["Navigator", "Performance", "Window
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 trybuild = "1"
 
+[package.metadata.docs.rs]
+# Document the native-back hooks and the timing feature too.
+features = ["native-back", "timing"]
+
 [patch.crates-io]
 # Dioxus fork (upstream main + g3 commits; see G3-PATCHES.md there). Local
 # builds use the sibling checkouts via Projects/.cargo/config.toml.
