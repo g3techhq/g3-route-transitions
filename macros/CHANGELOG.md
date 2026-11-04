@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] - not yet released
+
 ### Fixed
 
 - A `peers` group whose variants list different numbers of `key` fields is

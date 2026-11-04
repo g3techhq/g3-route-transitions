@@ -44,7 +44,7 @@ instantly.
 ```toml
 [dependencies]
 dioxus = { version = "=0.8.0-alpha.3", features = ["router"] }
-g3-route-transitions = "0.5"
+g3-route-transitions = "0.6"
 
 [patch.crates-io]
 dioxus = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
@@ -52,7 +52,7 @@ manganis = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
 g3-route-transitions = { git = "https://github.com/g3techhq/g3-route-transitions", branch = "main" }
 ```
 
-`main` builds on a fork of Dioxus `main` (`0.8.0-alpha.3`) and is not
+`main` (0.6) builds on a fork of Dioxus `main` (`0.8.0-alpha.3`) and is not
 published until Dioxus 0.8.0 is, so it comes in through `[patch.crates-io]`.
 `native-back` also needs `g3-native-plugins` and `dioxus-signals` patched the
 same way. For Dioxus 0.7.9, use `g3-route-transitions = "0.5"` from crates.io
@@ -61,7 +61,7 @@ without the patches.
 Enable `native-back` to animate the native Back action on Android and iOS:
 
 ```toml
-g3-route-transitions = { version = "0.5", features = ["native-back"] }
+g3-route-transitions = { version = "0.6", features = ["native-back"] }
 ```
 
 Enable `timing` in development to log where each navigation's time goes; see
@@ -459,7 +459,7 @@ Enable `timing` in a development build to log how long each phase of every
 animated navigation took:
 
 ```toml
-g3-route-transitions = { version = "0.5", features = ["timing"] }
+g3-route-transitions = { version = "0.6", features = ["timing"] }
 ```
 
 Each navigation logs one line at `info` level through `tracing`, with the

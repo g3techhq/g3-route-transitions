@@ -6,8 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - not yet released
+
+Published together with Dioxus 0.8.0; the date is set then. Needs
+`g3-route-transitions-macros` 0.5.1.
+
 ### Changed (breaking)
 
+- Version 0.6: depend on `g3-route-transitions = "0.6"`. A `"0.5"`
+  requirement no longer matches `main`, so Cargo quietly takes 0.5.0 (Dioxus
+  0.7) from crates.io instead of the `[patch.crates-io]` entry.
 - Requires Dioxus `=0.8.0-alpha.3` from the Gateway3B fork of Dioxus `main`
   (and `manganis` with it), instead of Dioxus 0.7.9. Nothing is published to
   crates.io until Dioxus 0.8.0 is; depend on this crate's `main` through
