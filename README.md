@@ -534,17 +534,25 @@ fn AppLayout() -> Element {
 The hook prepares `g3-native-plugins`, reusing an existing
 `NativePluginsProvider` if the app has one. It takes over the native Back
 action (Android's Back gesture or key, and iOS's swipe in from the left screen
-edge) only while router history can be popped, and runs the same animated pop
-as `try_animated_back`. At the root, Android Back leaves the app and an iOS
-edge swipe does nothing, as usual. On the web the hook does nothing; use
-`use_browser_history_transitions` there.
+edge) only while router history can be popped or an in-page layer holds it
+(below), and runs the same animated pop as `try_animated_back`. At the root,
+Android Back leaves the app and an iOS edge swipe does nothing, as usual. On
+the web the hook does nothing; use `use_browser_history_transitions` there.
+
+The iOS swipe is not interactive: the pop starts once the finger lifts past
+the edge threshold. iOS web views run View Transitions from iOS 18; on
+earlier versions every navigation, the swipe's included, changes the route
+without animating.
 
 Dialogs, sheets, fullscreen players, and other higher-priority UI can claim
 the cancelable `g3nativeback` window event by calling
 `event.preventDefault()`. If such UI can be open at the root of history, use
 `use_native_back_navigation_with_layer::<Route>(layer_open)` instead, passing a
 `Signal<bool>` or `Memo<bool>` that is true while the UI is open, so the event
-still fires. When no layer claims the event and there is no history, the
+still fires. UI libraries hold Back for their own surfaces with
+`use_native_back_layer(open)` from anywhere below the hook (g3-ui does for its
+sheets), so a sheet open on a tab root closes on Back instead of the app
+exiting. When no layer claims the event and there is no history, the
 action goes back to the platform: Android handles it, and iOS drops the swipe.
 After an animated pop, the library dispatches `g3routebacktransitionend`
 (`NATIVE_BACK_TRANSITION_FINISHED_EVENT`) for work such as restoring scroll
