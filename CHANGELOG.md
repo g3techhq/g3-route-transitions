@@ -43,6 +43,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A native Back pressed while a pop is running is no longer dropped silently:
   one such press is queued and runs after that pop, so a quick double Back
   goes back twice. Further presses during the pop are still dropped.
+- A Back started while an animated forward navigation is still capturing the
+  old page waits for that navigation's route change and then goes back from
+  the new page. The push and the pop used to race, so the user ended up on
+  either page.
 - The derive rejects a `peers` group whose variants list different numbers of
   `key` fields, instead of treating a variant with fewer keys as a peer of
   every key of the others.

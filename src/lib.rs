@@ -150,6 +150,7 @@
 //! motion.
 mod back_layer;
 mod browser_history;
+mod pending;
 
 pub use back_layer::use_native_back_layer;
 pub use browser_history::use_browser_history_transitions;
@@ -1275,7 +1276,14 @@ where
         commit();
         return;
     }
-    run_animated_navigation(animation, &from, Some(&route), commit).await;
+    // A Back started before the route changes waits for it (see
+    // `try_animated_back`).
+    let mut pending = pending::PendingRouteChange::start();
+    run_animated_navigation(animation, &from, Some(&route), || {
+        commit();
+        pending.finish();
+    })
+    .await;
 }
 
 /// Pop real router history with `current.transition_back()`.
@@ -1287,10 +1295,16 @@ where
 /// callers such as platform Back handlers can keep their own root behavior.
 /// It must run beneath `Router::<Route>`, and its future is dropped with the
 /// calling component just as [`animated_navigate`]'s is.
+///
+/// Called while an animated forward navigation is still capturing the old
+/// page, it first waits for that navigation to change the route, then goes
+/// back from the page it arrived at: the same place a Back pressed a moment
+/// later would reach, whichever finishes first.
 pub async fn try_animated_back<Route>() -> bool
 where
     Route: Routable + RouteTransitions,
 {
+    pending::route_changes_landed().await;
     let navigator = navigator();
     if !navigator.can_go_back() {
         return false;

@@ -424,6 +424,14 @@ All of them must run beneath `Router::<Route>`. Internally, JavaScript
 captures the old page, asks Rust to push, replace, or pop the route, waits for
 the new route to render, and then lets the animation run.
 
+A Back (`try_animated_back`, `animated_back_or_navigate`, or native Back)
+started while an animated forward navigation is still capturing the old page
+waits for that navigation to change the route, then goes back from the page
+it arrived at. Tapping a link and pressing Back at once therefore always ends
+where pressing Back a moment later would, usually the page you started on.
+The browser's own Back button is not held this way: the browser has already
+changed the URL by the time the page hears of it.
+
 Their futures resolve when the animation finishes, but only while the task
 awaiting them is alive. An event handler's task belongs to its component, so a
 handler on the page being left is dropped when the navigation unmounts that
