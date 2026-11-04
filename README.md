@@ -558,6 +558,10 @@ After an animated pop, the library dispatches `g3routebacktransitionend`
 (`NATIVE_BACK_TRANSITION_FINISHED_EVENT`) for work such as restoring scroll
 position.
 
+When the hook unmounts, it removes its listener from the page and stops
+intercepting Back, so the platform handles it again. With more than one hook
+mounted, the last to unmount does this.
+
 ## Migrating from 0.4
 
 0.5 renames so that each name means one thing: `base` was both a layer and a

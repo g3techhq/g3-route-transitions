@@ -36,6 +36,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Unmounting the component that calls `use_native_back_navigation` (or
+  `_with_layer`) now removes the native-back listener from the page and turns
+  native interception off. The listener used to outlive the hook and claim
+  every later press without navigating, and Android Back stayed taken.
 - The derive rejects a `peers` group whose variants list different numbers of
   `key` fields, instead of treating a variant with fewer keys as a peer of
   every key of the others.

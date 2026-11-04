@@ -1445,6 +1445,21 @@ window[stateKey] = {
 await released;
 "#;
 
+/// Removes the native-back bridge's listener and lets its script return, for
+/// when the last hook that installed it unmounts.
+#[cfg(all(
+    feature = "native-back",
+    any(target_os = "android", target_os = "ios", test)
+))]
+const NATIVE_BACK_BRIDGE_DISPOSE: &str =
+    r#"window[Symbol.for("g3-route-transitions.native-back")]?.dispose?.();"#;
+
+/// Mounted native-back hooks. The bridge and the interception are shared by
+/// the whole page, so only the last hook to unmount tears them down: a layout
+/// that remounts can mount its new hook before the old one drops.
+#[cfg(all(feature = "native-back", any(target_os = "android", target_os = "ios")))]
+static NATIVE_BACK_HOOKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Connect native Back from `g3-native-plugins` to [`try_animated_back`]:
 /// Android's system Back gesture or key, and iOS's swipe in from the left
 /// screen edge.
@@ -1545,6 +1560,26 @@ where
                 let mut back_button = back_button.write();
                 let _ = back_button.prepare();
                 let _ = back_button.set_intercepting(intercepting);
+            }
+        });
+        // Captured now: a component that is being dropped can no longer
+        // look its document up.
+        let document = use_hook(|| {
+            NATIVE_BACK_HOOKS.fetch_add(1, Ordering::Relaxed);
+            dioxus::document::document()
+        });
+        // Unmounted, the hook's task stops answering the bridge, so a press
+        // that reached it would be claimed and never navigate. Take the
+        // listener away and give Back back to the platform.
+        use_drop(move || {
+            if NATIVE_BACK_HOOKS.fetch_sub(1, Ordering::Relaxed) != 1 {
+                return;
+            }
+            let _ = document.eval(NATIVE_BACK_BRIDGE_DISPOSE.to_string());
+            // The signal may already be gone with its owner; then so is the
+            // plugin it held.
+            if let Ok(mut back_button) = back_button.try_write() {
+                let _ = back_button.set_intercepting(false);
             }
         });
         use_future(move || async move {
@@ -2140,6 +2175,25 @@ mod tests {
             .expect("the bridge can be disposed");
         assert!(dispose.contains("release();"));
         assert!(bridge.contains("state.pending = false"));
+    }
+
+    /// Unmounting the last hook disposes the bridge and stops intercepting.
+    #[cfg(feature = "native-back")]
+    #[test]
+    fn native_back_bridge_is_disposed_when_the_hook_unmounts() {
+        assert!(NATIVE_BACK_BRIDGE_DISPOSE.contains("g3-route-transitions.native-back"));
+        assert!(NATIVE_BACK_BRIDGE_DISPOSE.contains("?.dispose?.()"));
+        let source = include_str!("lib.rs");
+        let hook = source
+            .split("fn use_native_back<Route>(layer_open: bool)")
+            .nth(1)
+            .expect("the hooks share one body");
+        let drop = hook
+            .split("use_drop(move || {")
+            .nth(1)
+            .expect("the hook cleans up on unmount");
+        assert!(drop.contains("NATIVE_BACK_BRIDGE_DISPOSE"));
+        assert!(drop.contains("set_intercepting(false)"));
     }
 
     /// iOS raises the same `g3nativeback` event from its edge swipe, so the
