@@ -36,6 +36,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The derive rejects a `peers` group whose variants list different numbers of
+  `key` fields, instead of treating a variant with fewer keys as a peer of
+  every key of the others.
+
 - The `timing` listener reaches the page on Android and iOS. It resolved the
   document from a root task, where native renderers provide none.
 

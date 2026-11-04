@@ -448,6 +448,9 @@ fn build_peer_ordering_arms(
                 .push(variant);
         }
     }
+    for variants in groups.values() {
+        validate_peer_keys(variants)?;
+    }
     let mut arms = Vec::new();
     for variants in groups.values() {
         for from in variants {
@@ -468,13 +471,44 @@ fn build_peer_ordering_arms(
                 let from_order = from_aliases.order_alias();
                 let to_order = to_aliases.order_alias();
                 arms.push(quote! {
-                    (# from_pattern, # to_pattern) if # key_guard => Some(# to_order
-                    .cmp(# from_order))
+                    (# from_pattern, # to_pattern) if # key_guard => ::core::option::Option::Some(
+                        ::core::cmp::Ord::cmp(# to_order, # from_order)
+                    )
                 });
             }
         }
     }
     Ok(arms)
+}
+
+/// Every variant in a group compares the same number of `key` fields. Keys
+/// are compared pairwise, so a variant with fewer would silently skip the
+/// rest and be a peer of every key.
+fn validate_peer_keys(variants: &[&RouteVariant]) -> Result<()> {
+    let Some((first, rest)) = variants.split_first() else {
+        return Ok(());
+    };
+    let first_peers = first.transition.peers.as_ref();
+    let expected = first_peers.map_or(0, |peers| peers.key.len());
+    for variant in rest {
+        let Some(peers) = variant.transition.peers.as_ref() else {
+            continue;
+        };
+        if peers.key.len() != expected {
+            return Err(Error::new_spanned(
+                &peers.group,
+                format!(
+                    "every variant in peers group `{}` must list the same number of `key` fields: `{}` lists {}, `{}` lists {}",
+                    peers.group,
+                    first.ident,
+                    expected,
+                    variant.ident,
+                    peers.key.len(),
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_peer_fields(variant: &RouteVariant, peers: &PeerArgs) -> Result<()> {

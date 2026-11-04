@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A `peers` group whose variants list different numbers of `key` fields is
+  rejected. Keys were compared pairwise, so a variant with fewer keys was a
+  peer of every key of the others.
+- The generated peer ordering names `::core::option::Option::Some` and
+  `::core::cmp::Ord::cmp`, so it no longer depends on the prelude or on
+  nothing in scope shadowing `Some`.
+
 ## [0.5.0] - 2026-10-18
 
 ### Changed (breaking)

@@ -1,0 +1,5 @@
+error: every variant in peers group `tabs` must list the same number of `key` fields: `Details` lists 1, `Overview` lists 0
+ --> tests/ui/peers_key_count_mismatch.rs:7:32
+  |
+7 |     #[transition(peers(group = tabs, order = tab))]
+  |                                ^^^^
