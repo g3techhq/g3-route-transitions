@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `use_mouse_history_buttons::<Route>()` connects the mouse's Back and
+  Forward side buttons in a desktop app, where the router keeps history in
+  memory and the web view ignores them. Back animates as `try_animated_back`
+  does; Forward returns to the page Back left, animated as navigating there
+  would be, and cross-fades when that page is unknown. It does nothing on the
+  web, where the browser handles the buttons, or on Android and iOS.
+
 ### Fixed
 
 - On desktop and mobile, a navigation no longer waits out the 300ms ceiling

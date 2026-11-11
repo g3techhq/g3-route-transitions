@@ -150,6 +150,7 @@
 //! motion.
 mod back_layer;
 mod browser_history;
+mod mouse_history;
 mod pending;
 
 pub use back_layer::use_native_back_layer;
@@ -157,6 +158,7 @@ pub use browser_history::use_browser_history_transitions;
 use dioxus::{document::eval, prelude::*};
 pub use g3_route_transitions_macros::RouteTransitions;
 use manganis::{Asset, asset};
+pub use mouse_history::use_mouse_history_buttons;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 /// The stylesheet backing every transition. Link it once via
