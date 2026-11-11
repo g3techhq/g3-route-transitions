@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- On desktop and mobile, a navigation no longer waits out the 300ms ceiling
+  when the route's edits reach the web view before Rust's acknowledgement
+  (seen on Android when the UI thread is busy, for example just after a
+  Back). `RouteTransitionPageRegion` and `RouteTransitionBaseRegion` now
+  carry `data-route-transition-route`, the path they render, and the wait
+  ends as soon as a region names the destination. Back, and routes without a
+  region (sheets), wait as before. Timing reports this as
+  `route rendered (route)`.
+
 ## [0.6.0] - not yet released
 
 Published together with Dioxus 0.8.0; the date is set then. Needs

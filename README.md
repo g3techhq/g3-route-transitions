@@ -354,6 +354,12 @@ dark mode.
 | `data-route-transition-from` | Path of the route being left |
 | `data-route-transition-to` | Path of the route being entered. Absent on Back, because the destination is not known yet. |
 
+`RouteTransitionPageRegion` and `RouteTransitionBaseRegion` also carry
+`data-route-transition-route`, the path of the route they render, at all
+times. The navigate script compares it with the destination to tell when the
+new page has arrived, so a region must not be rendered with a different route
+than the router's.
+
 Use these to lift extra elements into their own snapshot for specific
 transitions:
 
@@ -475,7 +481,7 @@ forward /playlists -> /playlists/watch-later (material): animated; input to scri
 | input to script | From the latest tap or key press to the script starting: the event reaching Rust, the handler, and the script reaching the web view |
 | old page captured | Waiting for a frame in which to snapshot the old page |
 | route acknowledged | One round trip from the web view to Rust and back |
-| route rendered | From asking for the route to its arrival in the DOM. `structure` or `text` names the change that ended the wait. `ceiling` means none did within 120ms (300ms on desktop and mobile, where only the route's own Dioxus edits count), so the old page was probably captured as the new one |
+| route rendered | From asking for the route to its arrival in the DOM. `route` means a page or base region now names the destination (see below). `structure` or `text` names the change that ended the wait. `ceiling` means none did within 120ms (300ms on desktop and mobile, where only the route's own Dioxus edits count), so the old page was probably captured as the new one |
 | new page captured | From the new route to the first moving frame |
 | input to motion | The whole delay the user feels. Reads `script to motion` when no input came just before |
 | animation | From the first moving frame to the end |

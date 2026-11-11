@@ -247,10 +247,19 @@ fn merge_transition_class(base: &'static str, extra: Option<&str>) -> String {
 #[component]
 pub fn RouteTransitionBaseRegion(children: Element, class: Option<String>) -> Element {
     let class = merge_transition_class(ROUTE_TRANSITION_BASE_REGION_CLASS, class.as_deref());
+    let route = rendered_route();
 
     rsx! {
-        div { class, {children} }
+        div { class, "data-route-transition-route": route, {children} }
     }
+}
+
+/// The route a region renders, published as `data-route-transition-route` so
+/// the navigate script can recognise the destination when it lands (see
+/// `dxRouteTransitionRouteRendered`). Reading it re-renders the region on
+/// every route change; outside a router there is none.
+fn rendered_route() -> Option<String> {
+    try_router().map(|router| router.full_route_string())
 }
 
 /// Content that rises over the base region for `PresentSheet` and falls away
@@ -303,9 +312,10 @@ pub fn RouteTransitionSegmentRegion(children: Element, class: Option<String>) ->
 #[component]
 pub fn RouteTransitionPageRegion(children: Element, class: Option<String>) -> Element {
     let class = merge_transition_class(ROUTE_TRANSITION_PAGE_REGION_CLASS, class.as_deref());
+    let route = rendered_route();
 
     rsx! {
-        div { class, {children} }
+        div { class, "data-route-transition-route": route, {children} }
     }
 }
 
@@ -733,6 +743,16 @@ const UNPAINTED_PAGE_MS = 1000;
 //
 // On the web the route renders in the same turn as the acknowledgement and is
 // observed before it, so any change after the request counts.
+//
+// The acknowledgement and the edits travel separately, though, and natively
+// the edits can win: on Android the acknowledgement goes through a busy UI
+// thread. The route's batch then lands first, is not counted, and the wait
+// sits out the whole ceiling. So the destination is also recognised by name:
+// page and base regions publish the route they render as
+// `data-route-transition-route`, and once one names `to` the route has
+// arrived, before the acknowledgement or after it. No earlier batch can name
+// it, since the router has not changed yet. Back has no `to`, and a route
+// without a region (a sheet) is not named; both keep the rules above.
 const ROUTE_CEILING_MS = 120;
 const NATIVE_ROUTE_CEILING_MS = 300;
 const dxRouteTransitionRouteRendered = (interpreter) => {
@@ -745,6 +765,13 @@ const dxRouteTransitionRouteRendered = (interpreter) => {
         resolveDone = resolve;
     });
     const how = (records) => records.some((record) => record.type === "childList") ? "structure" : "text";
+    const arrived = () => {
+        if (!to) return false;
+        for (const region of document.querySelectorAll("[data-route-transition-route]")) {
+            if (region.getAttribute("data-route-transition-route") === to) return true;
+        }
+        return false;
+    };
     const apply = native ? interpreter.run_from_bytes : null;
     const observedApply = function (bytes) {
         if (settled) return apply.call(this, bytes);
@@ -752,7 +779,8 @@ const dxRouteTransitionRouteRendered = (interpreter) => {
         observer?.takeRecords?.();
         const result = apply.call(this, bytes);
         const records = observer?.takeRecords?.() ?? [];
-        if (acked && records.length > 0) finish(how(records));
+        if (arrived()) finish("route");
+        else if (acked && records.length > 0) finish(how(records));
         return result;
     };
     const finish = (reason) => {
@@ -786,6 +814,11 @@ const dxRouteTransitionRouteRendered = (interpreter) => {
         acknowledged() {
             if (acked) return;
             acked = true;
+            // The route's batch may already have landed.
+            if (arrived()) {
+                finish("route");
+                return;
+            }
             startCeiling();
         },
     };
@@ -2068,9 +2101,48 @@ mod tests {
         // The interpreter gets its own apply back once the wait is over.
         assert!(script.contains("interpreter.run_from_bytes = apply;"));
         // The ceiling starts only once the acknowledgement arrives.
-        assert!(script.contains("acked = true;\n            startCeiling();"));
+        let acknowledged = script
+            .find("acknowledged() {")
+            .expect("the acknowledgement is handled");
+        let marked = acknowledged
+            + script[acknowledged..]
+                .find("acked = true;")
+                .expect("the acknowledgement is recorded");
+        let ceiling = acknowledged
+            + script[acknowledged..]
+                .find("startCeiling();")
+                .expect("the ceiling starts on the acknowledgement");
+        assert!(marked < ceiling);
         assert!(script.contains("if (acked) startCeiling();"));
         assert!(script.contains("const NATIVE_ROUTE_CEILING_MS = 300;"));
+    }
+
+    /// Natively the acknowledgement and the route's edits travel separately,
+    /// and on a busy Android UI thread the edits arrive first. Counting only
+    /// batches after the acknowledgement then ignored the route, and every
+    /// such navigation waited out the 300ms ceiling. The destination is
+    /// recognised by the route its regions publish: in any batch, and when
+    /// the acknowledgement arrives after the route already has.
+    #[test]
+    fn native_navigations_recognise_the_destination_by_its_route() {
+        let script = VIEW_TRANSITION_NAVIGATE;
+        assert!(script.contains("if (!to) return false;"));
+        assert!(script.contains("document.querySelectorAll(\"[data-route-transition-route]\")"));
+        assert!(script.contains("region.getAttribute(\"data-route-transition-route\") === to"));
+        // A named destination counts in any batch, before the
+        // acknowledgement too; anything else still waits for it.
+        assert!(script.contains(
+            "if (arrived()) finish(\"route\");\n        else if (acked && records.length > 0) finish(how(records));"
+        ));
+        // A route that landed before the acknowledgement ends the wait when
+        // it arrives, before any ceiling starts.
+        let acknowledged = script
+            .find("acknowledged() {")
+            .expect("the acknowledgement is handled");
+        let body = &script[acknowledged..];
+        let checked = body.find("if (arrived()) {").expect("arrival is checked");
+        let ceiling = body.find("startCeiling();").expect("the ceiling starts");
+        assert!(checked < ceiling);
     }
 
     /// Timing is reported only with the feature, through the listener rather

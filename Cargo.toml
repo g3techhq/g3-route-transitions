@@ -32,6 +32,8 @@ timing = ["dioxus/logger"]
 web-sys = { version = "0.3.102", features = ["Navigator", "Performance", "Window"] }
 
 [dev-dependencies]
+# Renders regions to HTML in tests/regions.rs.
+dioxus-ssr = "=0.8.0-alpha.3"
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 trybuild = "1"
 
@@ -46,6 +48,7 @@ dioxus = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
 # g3-native-plugins (behind `native-back`) depends on dioxus-signals directly.
 dioxus-signals = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
 manganis = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
+dioxus-ssr = { git = "https://github.com/Gateway3B/dioxus", branch = "main" }
 # g3 crates are not published until Dioxus 0.8.0:
 g3-native-plugins = { git = "https://github.com/g3techhq/g3-native-plugins", branch = "main" }
 
